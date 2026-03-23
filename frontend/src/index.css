@@ -1,0 +1,784 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ========================================
+   NEXUSTRADER - LIME NEON DARK THEME
+   Premium Trading Platform Design
+   ======================================== */
+
+:root {
+  /* Primary lime color palette */
+  --neon-lime: #c8ff00;
+  --neon-lime-dim: #9acc00;
+  --neon-green: #00ff88;
+  --neon-cyan: #00f5ff;
+  --neon-purple: #bf00ff;
+  --neon-pink: #ff00f5;
+  --neon-orange: #ff6b00;
+  --neon-red: #ff3366;
+  
+  /* Background colors */
+  --bg-primary: #0a0a0a;
+  --bg-secondary: #050505;
+  --bg-tertiary: #0d0d18;
+  --bg-card: rgba(13, 13, 24, 0.8);
+  --bg-card-solid: #0d0d18;
+  --bg-hover: rgba(200, 255, 0, 0.05);
+  
+  /* Glass effects */
+  --glass-border: rgba(200, 255, 0, 0.1);
+  --glass-border-light: rgba(255, 255, 255, 0.1);
+  --glass-bg: rgba(200, 255, 0, 0.03);
+  
+  /* Accent colors - LIME FOCUSED */
+  --accent-primary: var(--neon-lime);
+  --accent-secondary: var(--neon-green);
+  --accent-tertiary: var(--neon-cyan);
+  
+  /* Text colors */
+  --text-primary: #ffffff;
+  --text-secondary: rgba(255, 255, 255, 0.7);
+  --text-muted: rgba(255, 255, 255, 0.5);
+  --text-dim: rgba(255, 255, 255, 0.3);
+  
+  /* Status colors */
+  --success: #00ff88;
+  --warning: #ffaa00;
+  --error: #ff3366;
+  --info: var(--neon-lime);
+  
+  /* Shadows */
+  --shadow-lime: 0 0 30px rgba(200, 255, 0, 0.15);
+  --shadow-lime-strong: 0 0 50px rgba(200, 255, 0, 0.25);
+}
+
+/* Light mode variables */
+.light-mode, [data-theme="light"] {
+  --bg-primary: #f8fafc;
+  --bg-secondary: #ffffff;
+  --bg-tertiary: #f1f5f9;
+  --bg-card: rgba(255, 255, 255, 0.95);
+  --bg-card-solid: #ffffff;
+  --bg-hover: rgba(200, 255, 0, 0.1);
+  
+  --glass-border: rgba(124, 184, 0, 0.3);
+  --glass-border-light: rgba(0, 0, 0, 0.1);
+  --glass-bg: rgba(200, 255, 0, 0.05);
+  
+  --text-primary: #0f172a;
+  --text-secondary: #334155;
+  --text-muted: #64748b;
+  --text-dim: #94a3b8;
+  
+  --neon-lime: #7cb800;
+  --accent-primary: #7cb800;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  min-height: 100vh;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Animated mesh gradient background */
+body::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: 
+    radial-gradient(ellipse at 20% 20%, rgba(200, 255, 0, 0.06) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 80%, rgba(0, 255, 136, 0.04) 0%, transparent 50%),
+    radial-gradient(ellipse at 50% 50%, rgba(0, 245, 255, 0.02) 0%, transparent 70%);
+  pointer-events: none;
+  z-index: -1;
+}
+
+/* Custom scrollbar with lime accent */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(200, 255, 0, 0.02);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, var(--neon-lime), var(--neon-green));
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, var(--neon-green), var(--neon-cyan));
+}
+
+/* ========================================
+   GLASSMORPHISM COMPONENTS
+   ======================================== */
+
+@layer components {
+  /* Glass card effect */
+  .glass-card {
+    @apply relative overflow-hidden;
+    background: var(--glass-bg);
+    -webkit-backdrop-filter: blur(20px);
+    backdrop-filter: blur(20px);
+    border: 1px solid var(--glass-border);
+    border-radius: 20px;
+  }
+  
+  .glass-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      135deg,
+      rgba(200, 255, 0, 0.05) 0%,
+      rgba(255, 255, 255, 0) 50%
+    );
+    pointer-events: none;
+    border-radius: inherit;
+  }
+
+  /* Lime glow effect */
+  .neon-glow {
+    box-shadow: 
+      0 0 20px rgba(200, 255, 0, 0.15),
+      0 0 40px rgba(200, 255, 0, 0.08),
+      inset 0 0 20px rgba(200, 255, 0, 0.03);
+  }
+
+  .neon-glow-strong {
+    box-shadow: 
+      0 0 30px rgba(200, 255, 0, 0.25),
+      0 0 60px rgba(200, 255, 0, 0.15),
+      inset 0 0 30px rgba(200, 255, 0, 0.05);
+  }
+
+  .neon-glow-green {
+    box-shadow: 
+      0 0 20px rgba(0, 255, 136, 0.2),
+      0 0 40px rgba(0, 255, 136, 0.1),
+      inset 0 0 20px rgba(0, 255, 136, 0.05);
+  }
+
+  .neon-glow-red {
+    box-shadow: 
+      0 0 20px rgba(255, 51, 102, 0.2),
+      0 0 40px rgba(255, 51, 102, 0.1),
+      inset 0 0 20px rgba(255, 51, 102, 0.05);
+  }
+
+  /* Gradient text - LIME FOCUSED */
+  .gradient-text {
+    background: linear-gradient(135deg, var(--neon-lime), var(--neon-green));
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+    display: inline;
+    -webkit-box-decoration-break: clone;
+    box-decoration-break: clone;
+  }
+
+  .gradient-text-alt {
+    background: linear-gradient(135deg, var(--neon-lime), var(--neon-cyan));
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+  }
+
+  .gradient-text-green {
+    background: linear-gradient(135deg, #00ff88, #00f5ff);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+  }
+
+  .gradient-text-red {
+    background: linear-gradient(135deg, #ff3366, #ff6b00);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+  }
+
+  /* Animated border gradient - LIME */
+  .gradient-border {
+    position: relative;
+    background: var(--bg-card);
+    border-radius: 20px;
+  }
+
+  .gradient-border::before {
+    content: '';
+    position: absolute;
+    inset: -2px;
+    background: linear-gradient(
+      45deg,
+      var(--neon-lime),
+      var(--neon-green),
+      var(--neon-cyan),
+      var(--neon-lime)
+    );
+    background-size: 400% 400%;
+    border-radius: inherit;
+    z-index: -1;
+    animation: borderGradient 6s linear infinite;
+  }
+
+  /* Primary button - LIME THEME */
+  .btn-primary {
+    @apply relative px-6 py-3 font-semibold rounded-xl overflow-hidden transition-all duration-300;
+    background: linear-gradient(135deg, var(--neon-lime), var(--neon-green));
+    color: #000000;
+  }
+
+  .btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 40px rgba(200, 255, 0, 0.3);
+  }
+
+  .btn-primary:active {
+    transform: translateY(0);
+  }
+
+  /* Secondary button */
+  .btn-secondary {
+    @apply relative px-6 py-3 font-semibold rounded-xl overflow-hidden transition-all duration-300;
+    background: transparent;
+    border: 1px solid var(--neon-lime);
+    color: var(--neon-lime);
+  }
+
+  .btn-secondary:hover {
+    background: rgba(200, 255, 0, 0.1);
+    box-shadow: 0 0 30px rgba(200, 255, 0, 0.2);
+  }
+
+  /* Input styles */
+  .input-glass {
+    @apply w-full px-4 py-3 rounded-xl transition-all duration-300;
+    background: rgba(200, 255, 0, 0.03);
+    border: 1px solid var(--glass-border);
+    color: var(--text-primary);
+  }
+
+  .input-glass::placeholder {
+    color: var(--text-dim);
+  }
+
+  .input-glass:focus {
+    outline: none;
+    border-color: var(--neon-lime);
+    box-shadow: 0 0 20px rgba(200, 255, 0, 0.15);
+  }
+
+  /* Stat card */
+  .stat-card {
+    @apply glass-card p-6 flex flex-col items-center justify-center text-center;
+    min-height: 140px;
+  }
+
+  /* Accent card */
+  .accent-card {
+    @apply rounded-xl p-6 border transition-all;
+    background: rgba(200, 255, 0, 0.03);
+    border-color: rgba(200, 255, 0, 0.15);
+  }
+
+  .accent-card:hover {
+    border-color: rgba(200, 255, 0, 0.3);
+    box-shadow: var(--shadow-lime);
+  }
+
+  /* Pulse animation for live data */
+  .pulse-live {
+    animation: pulse-live 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+
+  /* Lime dot indicator */
+  .live-dot {
+    @apply w-2 h-2 rounded-full;
+    background: var(--neon-lime);
+    box-shadow: 0 0 10px var(--neon-lime);
+    animation: pulse-live 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+}
+
+/* ========================================
+   ANIMATIONS
+   ======================================== */
+
+@keyframes borderGradient {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+@keyframes pulse-live {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-10px); }
+}
+
+@keyframes countUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes glow-pulse {
+  0%, 100% { 
+    box-shadow: 0 0 20px rgba(200, 255, 0, 0.2);
+  }
+  50% { 
+    box-shadow: 0 0 40px rgba(200, 255, 0, 0.4);
+  }
+}
+
+/* Loading skeleton */
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(200, 255, 0, 0.03) 0%,
+    rgba(200, 255, 0, 0.08) 50%,
+    rgba(200, 255, 0, 0.03) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+/* Chart container */
+.chart-container {
+  @apply glass-card p-6;
+  min-height: 400px;
+}
+
+/* Confidence meter */
+.confidence-meter {
+  @apply relative h-3 rounded-full overflow-hidden;
+  background: rgba(200, 255, 0, 0.1);
+}
+
+.confidence-fill {
+  @apply h-full rounded-full transition-all duration-1000 ease-out;
+}
+
+/* ========================================
+   FORM ELEMENTS - LIME THEMED
+   ======================================== */
+
+/* Checkbox styling */
+input[type="checkbox"] {
+  @apply rounded;
+  accent-color: var(--neon-lime);
+}
+
+input[type="checkbox"]:checked {
+  background-color: var(--neon-lime);
+  border-color: var(--neon-lime);
+}
+
+/* Radio button styling */
+input[type="radio"] {
+  accent-color: var(--neon-lime);
+}
+
+/* Select styling */
+select {
+  @apply rounded-xl px-4 py-2;
+  background: rgba(200, 255, 0, 0.03);
+  border: 1px solid var(--glass-border);
+  color: var(--text-primary);
+}
+
+select:focus {
+  outline: none;
+  border-color: var(--neon-lime);
+  box-shadow: 0 0 20px rgba(200, 255, 0, 0.15);
+}
+
+/* ========================================
+   LIGHT MODE OVERRIDES
+   ======================================== */
+
+.light-mode,
+[data-theme="light"] {
+  --bg-primary: #f8fafc;
+  --bg-secondary: #ffffff;
+  --bg-tertiary: #f1f5f9;
+  --bg-card: rgba(255, 255, 255, 0.95);
+  --bg-card-solid: #ffffff;
+  --bg-hover: rgba(124, 184, 0, 0.1);
+  
+  --glass-border: rgba(124, 184, 0, 0.25);
+  --glass-border-light: rgba(0, 0, 0, 0.08);
+  --glass-bg: rgba(255, 255, 255, 0.7);
+  
+  --text-primary: #0f172a;
+  --text-secondary: #334155;
+  --text-muted: #64748b;
+  --text-dim: #94a3b8;
+  
+  --neon-lime: #7cb800;
+  --neon-lime-dim: #5a8a00;
+  --neon-green: #059669;
+  --accent-primary: #7cb800;
+  
+  --shadow-lime: 0 4px 20px rgba(124, 184, 0, 0.15);
+  --shadow-lime-strong: 0 8px 30px rgba(124, 184, 0, 0.2);
+  
+  --success: #059669;
+  --warning: #d97706;
+  --error: #dc2626;
+  --info: #7cb800;
+}
+
+.light-mode body,
+[data-theme="light"] body {
+  background: #f8fafc;
+  color: #0f172a;
+}
+
+.light-mode body::before,
+[data-theme="light"] body::before {
+  background: 
+    radial-gradient(ellipse at 20% 20%, rgba(124, 184, 0, 0.08) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 80%, rgba(5, 150, 105, 0.06) 0%, transparent 50%),
+    radial-gradient(ellipse at 50% 50%, rgba(124, 184, 0, 0.04) 0%, transparent 70%);
+}
+
+/* Light mode scrollbar */
+.light-mode ::-webkit-scrollbar-track,
+[data-theme="light"] ::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.02);
+}
+
+.light-mode ::-webkit-scrollbar-thumb,
+[data-theme="light"] ::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #7cb800, #059669);
+}
+
+/* Light mode glass card */
+.light-mode .glass-card,
+[data-theme="light"] .glass-card,
+.glass-card-light {
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(124, 184, 0, 0.2);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+}
+
+.light-mode .glass-card::before,
+[data-theme="light"] .glass-card::before,
+.glass-card-light::before {
+  background: linear-gradient(
+    135deg,
+    rgba(124, 184, 0, 0.08) 0%,
+    rgba(255, 255, 255, 0) 50%
+  );
+}
+
+/* Light mode neon glow */
+.light-mode .neon-glow,
+[data-theme="light"] .neon-glow {
+  box-shadow: 
+    0 4px 20px rgba(124, 184, 0, 0.15),
+    0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+.light-mode .neon-glow-strong,
+[data-theme="light"] .neon-glow-strong {
+  box-shadow: 
+    0 8px 30px rgba(124, 184, 0, 0.2),
+    0 2px 6px rgba(0, 0, 0, 0.08);
+}
+
+.light-mode .neon-glow-green,
+[data-theme="light"] .neon-glow-green {
+  box-shadow: 
+    0 4px 20px rgba(5, 150, 105, 0.15),
+    0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+.light-mode .neon-glow-red,
+[data-theme="light"] .neon-glow-red {
+  box-shadow: 
+    0 4px 20px rgba(220, 38, 38, 0.15),
+    0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+/* Light mode gradient text */
+.light-mode .gradient-text,
+[data-theme="light"] .gradient-text {
+  background: linear-gradient(135deg, #7cb800, #059669);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.light-mode .gradient-text-alt,
+[data-theme="light"] .gradient-text-alt {
+  background: linear-gradient(135deg, #7cb800, #0891b2);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.light-mode .gradient-text-green,
+[data-theme="light"] .gradient-text-green {
+  background: linear-gradient(135deg, #059669, #0891b2);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.light-mode .gradient-text-red,
+[data-theme="light"] .gradient-text-red {
+  background: linear-gradient(135deg, #dc2626, #ea580c);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Light mode gradient border */
+.light-mode .gradient-border,
+[data-theme="light"] .gradient-border {
+  background: #ffffff;
+}
+
+.light-mode .gradient-border::before,
+[data-theme="light"] .gradient-border::before {
+  background: linear-gradient(
+    45deg,
+    #7cb800,
+    #059669,
+    #0891b2,
+    #7cb800
+  );
+}
+
+/* Light mode buttons */
+.light-mode .btn-primary,
+[data-theme="light"] .btn-primary {
+  background: linear-gradient(135deg, #7cb800, #059669);
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.light-mode .btn-primary:hover,
+[data-theme="light"] .btn-primary:hover {
+  box-shadow: 0 8px 30px rgba(124, 184, 0, 0.3);
+}
+
+.light-mode .btn-secondary,
+[data-theme="light"] .btn-secondary {
+  border: 1px solid #7cb800;
+  color: #7cb800;
+  background: transparent;
+}
+
+.light-mode .btn-secondary:hover,
+[data-theme="light"] .btn-secondary:hover {
+  background: rgba(124, 184, 0, 0.1);
+}
+
+/* Light mode input styles */
+.light-mode .input-glass,
+[data-theme="light"] .input-glass {
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid #e2e8f0;
+  color: #0f172a;
+}
+
+.light-mode .input-glass::placeholder,
+[data-theme="light"] .input-glass::placeholder {
+  color: #94a3b8;
+}
+
+.light-mode .input-glass:focus,
+[data-theme="light"] .input-glass:focus {
+  border-color: #7cb800;
+  box-shadow: 0 0 0 3px rgba(124, 184, 0, 0.15);
+}
+
+/* Light mode stat card */
+.light-mode .stat-card,
+[data-theme="light"] .stat-card {
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(124, 184, 0, 0.15);
+}
+
+/* Light mode accent card */
+.light-mode .accent-card,
+[data-theme="light"] .accent-card {
+  background: rgba(124, 184, 0, 0.05);
+  border-color: rgba(124, 184, 0, 0.2);
+}
+
+.light-mode .accent-card:hover,
+[data-theme="light"] .accent-card:hover {
+  border-color: rgba(124, 184, 0, 0.4);
+  box-shadow: 0 4px 20px rgba(124, 184, 0, 0.1);
+}
+
+/* Light mode live dot */
+.light-mode .live-dot,
+[data-theme="light"] .live-dot {
+  background: #7cb800;
+  box-shadow: 0 0 8px #7cb800;
+}
+
+/* Light mode confidence meter */
+.light-mode .confidence-meter,
+[data-theme="light"] .confidence-meter {
+  background: rgba(124, 184, 0, 0.1);
+}
+
+/* Light mode skeleton */
+.light-mode .skeleton,
+[data-theme="light"] .skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(0, 0, 0, 0.03) 0%,
+    rgba(0, 0, 0, 0.06) 50%,
+    rgba(0, 0, 0, 0.03) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+/* Light mode form elements */
+.light-mode select,
+[data-theme="light"] select {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  color: #0f172a;
+}
+
+.light-mode select:focus,
+[data-theme="light"] select:focus {
+  border-color: #7cb800;
+  box-shadow: 0 0 0 3px rgba(124, 184, 0, 0.15);
+}
+
+.light-mode input[type="checkbox"]:checked,
+[data-theme="light"] input[type="checkbox"]:checked {
+  background-color: #7cb800;
+  border-color: #7cb800;
+}
+
+/* Light mode chart container */
+.light-mode .chart-container,
+[data-theme="light"] .chart-container {
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(124, 184, 0, 0.15);
+}
+
+/* Light mode text utilities */
+.light-mode .text-lime,
+[data-theme="light"] .text-lime {
+  color: #7cb800;
+}
+
+.light-mode .bg-lime-glow,
+[data-theme="light"] .bg-lime-glow {
+  background: rgba(124, 184, 0, 0.08);
+}
+
+.light-mode .hover\:bg-lime-glow:hover,
+[data-theme="light"] .hover\:bg-lime-glow:hover {
+  background: rgba(124, 184, 0, 0.12);
+}
+
+/* Light mode sidebar */
+.light-mode .sidebar,
+[data-theme="light"] .sidebar {
+  background: #ffffff;
+  border-right: 1px solid #e2e8f0;
+}
+
+/* Light mode table styles */
+.light-mode table,
+[data-theme="light"] table {
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.light-mode th,
+[data-theme="light"] th {
+  background: rgba(124, 184, 0, 0.05);
+  color: #0f172a;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.light-mode td,
+[data-theme="light"] td {
+  border-bottom: 1px solid #f1f5f9;
+  color: #334155;
+}
+
+.light-mode tr:hover,
+[data-theme="light"] tr:hover {
+  background: rgba(124, 184, 0, 0.03);
+}
+
+/* ========================================
+   RESPONSIVE UTILITIES
+   ======================================== */
+
+@layer utilities {
+  .text-balance {
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+  }
+
+  /* Lime accent utilities */
+  .text-lime {
+    color: var(--neon-lime);
+  }
+
+  .bg-lime {
+    background-color: var(--neon-lime);
+  }
+
+  .border-lime {
+    border-color: var(--neon-lime);
+  }
+
+  .bg-lime-glow {
+    background: rgba(200, 255, 0, 0.1);
+  }
+
+  .hover\:bg-lime-glow:hover {
+    background: rgba(200, 255, 0, 0.15);
+  }
+}

@@ -1,0 +1,30 @@
+{
+    "appId": "com.marketoracle.app",
+    "appName": "Market Oracle",
+    "webDir": "../frontend/dist",
+    "server": {
+        "url": "http://localhost:8000",
+        "cleartext": true
+    },
+    "ios": {
+        "contentInset": "automatic",
+        "backgroundColor": "#0a0a14",
+        "preferredContentMode": "mobile"
+    },
+    "android": {
+        "backgroundColor": "#0a0a14",
+        "allowMixedContent": true
+    },
+    "plugins": {
+        "SplashScreen": {
+            "launchShowDuration": 2000,
+            "backgroundColor": "#0a0a14",
+            "showSpinner": true,
+            "spinnerColor": "#00f5ff"
+        },
+        "StatusBar": {
+            "style": "dark",
+            "backgroundColor": "#0a0a14"
+        }
+    }
+}

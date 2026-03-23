@@ -1,0 +1,41 @@
+# Backend
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+gunicorn==21.2.0
+pydantic==2.5.3
+python-multipart==0.0.6
+
+# Data Sources (100% Free)
+yfinance==0.2.36
+ccxt==4.2.19
+pandas==2.1.4
+pandas-datareader==0.10.0
+
+# ML/AI Libraries
+tensorflow==2.15.0
+prophet==1.1.5
+xgboost==2.0.3
+lightgbm==4.3.0
+scikit-learn==1.4.0
+
+# Technical Indicators
+ta==0.11.0
+numpy==1.26.3
+
+# Database & Security
+sqlalchemy==2.0.25
+aiosqlite==0.19.0
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+psycopg2-binary>=2.9.6
+
+# Utilities
+python-dotenv==1.0.0
+httpx==0.26.0
+beautifulsoup4==4.12.3
+lxml==4.9.3
+requests==2.31.0
+
+# Signal Processing (Kalman + Wavelet preprocessing for higher accuracy)
+scipy>=1.11.0
+PyWavelets>=1.5.0

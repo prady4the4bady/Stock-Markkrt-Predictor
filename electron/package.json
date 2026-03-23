@@ -1,0 +1,94 @@
+{
+    "name": "market-oracle-desktop",
+    "version": "1.0.0",
+    "description": "Market Oracle - AI Stock & Crypto Predictions (Desktop App)",
+    "main": "main.js",
+    "author": "Market Oracle Team",
+    "license": "MIT",
+    "scripts": {
+        "start": "electron .",
+        "build:win": "electron-builder --win --x64",
+        "build:mac": "electron-builder --mac --x64 --arm64",
+        "build:linux": "electron-builder --linux --x64",
+        "build:all": "electron-builder --win --mac --linux"
+    },
+    "build": {
+        "appId": "com.marketoracle.app",
+        "productName": "Market Oracle",
+        "copyright": "Copyright © 2024 Market Oracle",
+        "directories": {
+            "output": "dist-electron"
+        },
+        "files": [
+            "main.js",
+            "preload.js",
+            "assets/**/*"
+        ],
+        "extraResources": [
+            {
+                "from": "../frontend/dist",
+                "to": "frontend"
+            }
+        ],
+        "win": {
+            "target": [
+                {
+                    "target": "nsis",
+                    "arch": [
+                        "x64"
+                    ]
+                },
+                {
+                    "target": "portable",
+                    "arch": [
+                        "x64"
+                    ]
+                }
+            ],
+            "icon": "assets/icon.ico"
+        },
+        "mac": {
+            "target": [
+                {
+                    "target": "dmg",
+                    "arch": [
+                        "x64",
+                        "arm64"
+                    ]
+                }
+            ],
+            "icon": "assets/icon.icns",
+            "category": "public.app-category.finance"
+        },
+        "linux": {
+            "target": [
+                {
+                    "target": "AppImage",
+                    "arch": [
+                        "x64"
+                    ]
+                },
+                {
+                    "target": "deb",
+                    "arch": [
+                        "x64"
+                    ]
+                }
+            ],
+            "icon": "assets/icon.png",
+            "category": "Finance"
+        },
+        "nsis": {
+            "oneClick": false,
+            "allowToChangeInstallationDirectory": true,
+            "installerIcon": "assets/icon.ico",
+            "installerHeaderIcon": "assets/icon.ico",
+            "createDesktopShortcut": true,
+            "createStartMenuShortcut": true
+        }
+    },
+    "devDependencies": {
+        "electron": "^28.1.0",
+        "electron-builder": "^24.9.1"
+    }
+}
