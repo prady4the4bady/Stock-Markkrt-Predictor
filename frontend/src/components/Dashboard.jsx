@@ -26,7 +26,7 @@ import { getCurrencyForSymbol, formatPriceWithCurrency, getCurrencySymbol } from
 const API_URL = '/api'
 
 export default function Dashboard({ selectedAsset, assetType, onAssetSelect }) {
-    const { user, subscription } = useAuth()
+    const { user } = useAuth()
     const { isDark, isLight, colors, classes } = useTheme()
     const navigate = useNavigate()
     const [prediction, setPrediction] = useState(null)
@@ -43,10 +43,6 @@ export default function Dashboard({ selectedAsset, assetType, onAssetSelect }) {
     const [showAlertModal, setShowAlertModal] = useState(false)
     const [alertAbove, setAlertAbove] = useState('')
     const [alertBelow, setAlertBelow] = useState('')
-    const [showUpgradeModal, setShowUpgradeModal] = useState(false)
-    const [upgradeReason, setUpgradeReason] = useState('')
-    const [limitError, setLimitError] = useState(null)
-    
     // Track session for activity tracking
     const sessionRef = useRef(null)
     const previousAssetRef = useRef(null)
@@ -279,54 +275,15 @@ export default function Dashboard({ selectedAsset, assetType, onAssetSelect }) {
 
         setIsLoading(true)
         setError(null)
-        setLimitError(null)
 
         try {
             const isCrypto = assetType === 'crypto'
-
-            // ── SUBSCRIPTION GATE QUARANTINE ──────────────────────────────────────
-            // Prediction limit check disabled — all users run predictions freely.
-            //
-            // TO RE-ENABLE: Uncomment the block below and remove this comment.
-            //   It calls POST /api/subscription/check-prediction with
-            //   { forecast_days, range_period } → { allowed: bool, errors: string[] }
-            //   and blocks execution when allowed === false.
-            //
-            // if (user) {
-            //     try {
-            //         const checkRes = await axios.post(`${API_URL}/subscription/check-prediction`, {
-            //             forecast_days: predictionDays,
-            //             range_period: period
-            //         })
-            //         if (!checkRes.data.allowed) {
-            //             setLimitError(checkRes.data.errors?.[0] || 'Prediction limit reached')
-            //             setIsLoading(false)
-            //             return
-            //         }
-            //     } catch (checkErr) {
-            //         console.warn('Limit check failed:', checkErr)
-            //     }
-            // }
-            // ──────────────────────────────────────────────────────────────────────
 
             // Fetch prediction
             const predRes = await api.get(`/predict/${selectedAsset}`, {
                 params: { days: predictionDays, is_crypto: isCrypto }
             })
             setPrediction(predRes.data)
-
-            // ── USE-PREDICTION TRACKING QUARANTINE ──────────────────────────
-            // Prediction counter tracking disabled — all users run predictions freely.
-            // TO RE-ENABLE: Uncomment the block below.
-            // if (user) {
-            //     try {
-            //         await api.post(`/subscription/use-prediction`)
-            //         refreshSubscription()
-            //     } catch (useErr) {
-            //         console.warn('Failed to track prediction usage:', useErr)
-            //     }
-            // }
-            // ─────────────────────────────────────────────────────────────────
 
             // Track prediction request in activity
             if (user && sessionRef.current) {
@@ -358,7 +315,7 @@ export default function Dashboard({ selectedAsset, assetType, onAssetSelect }) {
             const detail  = err.nexus?.detail  ?? ''
 
             if (status === 429) {
-                setLimitError(message)
+                setError(message)
             } else if (status === 503) {
                 // 503 = cache repaired or provider down — show with retry hint
                 setError(`${message}${detail ? ` (${detail})` : ''}`)
@@ -602,16 +559,6 @@ export default function Dashboard({ selectedAsset, assetType, onAssetSelect }) {
                     </div>
 
                     <div className="flex items-center gap-3">
-                        {/* Plan indicator — quarantine: counter removed, all features open */}
-                        {subscription && subscription.plan !== 'free' && (
-                            <div className={`flex items-center gap-2 px-3 py-1 rounded-lg text-xs font-semibold ${
-                                subscription.plan === 'elite' ? 'bg-[#c8ff00]/20 text-[#c8ff00]' :
-                                'bg-[#00ff88]/20 text-[#00ff88]'
-                            }`}>
-                                👑 {subscription.plan_name || subscription.plan.toUpperCase()}
-                            </div>
-                        )}
-                        
                         <motion.button
                             whileHover={{ scale: 1.05 }}
                             whileTap={{ scale: 0.95 }}
@@ -975,10 +922,6 @@ export default function Dashboard({ selectedAsset, assetType, onAssetSelect }) {
                 )}
             </AnimatePresence>
 
-            {/* UPGRADE MODAL — QUARANTINED
-            TO RE-ENABLE: Remove this comment block and restore the JSX below.
-            showUpgradeModal / upgradeReason state vars are kept for future use.
-            */}
         </div>
     )
 }

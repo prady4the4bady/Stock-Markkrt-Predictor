@@ -1,12 +1,11 @@
 import { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { 
-    TrendingUp, TrendingDown, RefreshCw, Target, Zap, Clock, 
+import {
+    TrendingUp, TrendingDown, RefreshCw, Target, Zap, Clock,
     BarChart3, Activity, Brain, Newspaper, ChevronUp, ChevronDown,
-    Lock, Crown, ArrowUpRight, ArrowDownRight, Sparkles
+    ArrowUpRight, ArrowDownRight, Sparkles
 } from 'lucide-react'
 import axios from 'axios'
-import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 
 const API_URL = '/api'
@@ -39,8 +38,7 @@ const AnimatedNumber = ({ value, prefix = '', suffix = '', decimals = 2 }) => {
 }
 
 export default function BentoDashboard({ selectedAsset, assetType, onAssetSelect }) {
-    const { user, planLimits, canUseRange, canUseForecast, subscription } = useAuth()
-    const navigate = useNavigate()
+    const { user } = useAuth()
     const [prediction, setPrediction] = useState(null)
     const [quote, setQuote] = useState(null)
     const [historical, setHistorical] = useState(null)
@@ -173,15 +171,6 @@ export default function BentoDashboard({ selectedAsset, assetType, onAssetSelect
                     <span className="px-3 py-1 rounded-full text-xs font-medium bg-slate-200 text-slate-600">
                         {assetType?.toUpperCase()}
                     </span>
-                    {subscription && (
-                        <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                            subscription.plan === 'elite' ? 'bg-amber-100 text-amber-700' :
-                            subscription.plan === 'pro' ? 'bg-purple-100 text-purple-700' :
-                            'bg-slate-100 text-slate-600'
-                        }`}>
-                            {subscription.plan === 'free' ? '🆓' : '👑'} {subscription.plan_name || subscription.plan.toUpperCase()}
-                        </span>
-                    )}
                 </div>
                 
                 <motion.button
@@ -336,26 +325,19 @@ export default function BentoDashboard({ selectedAsset, assetType, onAssetSelect
                     <div className="flex items-center justify-between h-full">
                         <span className="text-sm font-medium text-slate-500">Range</span>
                         <div className="flex gap-1">
-                            {['1h', '12h', '1d', '1w', '1mo', '3mo', '6mo', '1y'].map(p => {
-                                const isAllowed = canUseRange(p)
-                                const isActive = period === p
-                                return (
-                                    <button
-                                        key={p}
-                                        onClick={() => isAllowed && setPeriod(p)}
-                                        className={`relative px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                                            isActive
-                                                ? 'bg-slate-800 text-white'
-                                                : isAllowed
-                                                    ? 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                                                    : 'bg-slate-50 text-slate-300 cursor-not-allowed'
-                                        }`}
-                                    >
-                                        {p.toUpperCase()}
-                                        {!isAllowed && <Lock className="w-2 h-2 absolute -top-1 -right-1 text-amber-500" />}
-                                    </button>
-                                )
-                            })}
+                            {['1h', '12h', '1d', '1w', '1mo', '3mo', '6mo', '1y'].map(p => (
+                                <button
+                                    key={p}
+                                    onClick={() => setPeriod(p)}
+                                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                                        period === p
+                                            ? 'bg-slate-800 text-white'
+                                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                    }`}
+                                >
+                                    {p.toUpperCase()}
+                                </button>
+                            ))}
                         </div>
                     </div>
                 </motion.div>
@@ -377,26 +359,19 @@ export default function BentoDashboard({ selectedAsset, assetType, onAssetSelect
                                 { value: 7, label: '7D' },
                                 { value: 14, label: '14D' },
                                 { value: 30, label: '30D' }
-                            ].map(({ value, label }) => {
-                                const isAllowed = canUseForecast(value)
-                                const isActive = predictionDays === value
-                                return (
-                                    <button
-                                        key={value}
-                                        onClick={() => isAllowed && setPredictionDays(value)}
-                                        className={`relative px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                                            isActive
-                                                ? 'bg-[#7cb800] text-white'
-                                                : isAllowed
-                                                    ? 'bg-[#c8ff00]/20 text-[#7cb800] hover:bg-[#c8ff00]/30'
-                                                    : 'bg-slate-50 text-slate-300 cursor-not-allowed'
-                                        }`}
-                                    >
-                                        {label}
-                                        {!isAllowed && <Lock className="w-2 h-2 absolute -top-1 -right-1 text-amber-500" />}
-                                    </button>
-                                )
-                            })}
+                            ].map(({ value, label }) => (
+                                <button
+                                    key={value}
+                                    onClick={() => setPredictionDays(value)}
+                                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                                        predictionDays === value
+                                            ? 'bg-[#7cb800] text-white'
+                                            : 'bg-[#c8ff00]/20 text-[#7cb800] hover:bg-[#c8ff00]/30'
+                                    }`}
+                                >
+                                    {label}
+                                </button>
+                            ))}
                         </div>
                     </div>
                 </motion.div>
@@ -426,46 +401,27 @@ export default function BentoDashboard({ selectedAsset, assetType, onAssetSelect
                     initial={{ opacity: 0, scale: 0.95 }}
                     animate={{ opacity: 1, scale: 1 }}
                     transition={{ delay: 0.7 }}
-                    className="col-span-6 md:col-span-3 row-span-1 bg-white rounded-3xl p-5 shadow-sm border border-slate-200 relative overflow-hidden"
+                    className="col-span-6 md:col-span-3 row-span-1 bg-white rounded-3xl p-5 shadow-sm border border-slate-200"
                 >
-                    {planLimits?.show_model_weights ? (
-                        <div className="flex items-center justify-between h-full">
-                            <div className="flex items-center gap-2">
-                                <Brain className="w-5 h-5 text-slate-400" />
-                                <span className="text-sm font-medium text-slate-500">Models</span>
-                            </div>
-                            <div className="flex gap-2">
-                                {['LSTM', 'Prophet', 'XGB'].map((model, i) => (
-                                    <div key={model} className="text-center">
-                                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${
-                                            i === 0 ? 'bg-cyan-100 text-cyan-700' :
-                                            i === 1 ? 'bg-purple-100 text-purple-700' :
-                                            'bg-emerald-100 text-emerald-700'
-                                        }`}>
-                                            {Math.round((prediction?.individual_predictions?.[['lstm', 'prophet', 'xgboost'][i]]?.weight || 0.33) * 100)}
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
+                    <div className="flex items-center justify-between h-full">
+                        <div className="flex items-center gap-2">
+                            <Brain className="w-5 h-5 text-slate-400" />
+                            <span className="text-sm font-medium text-slate-500">Models</span>
                         </div>
-                    ) : (
-                        <>
-                            <div className="filter blur-sm">
-                                <div className="flex items-center gap-2">
-                                    <Brain className="w-5 h-5 text-slate-400" />
-                                    <span className="text-sm">Models</span>
+                        <div className="flex gap-2">
+                            {['LSTM', 'Prophet', 'XGB'].map((model, i) => (
+                                <div key={model} className="text-center">
+                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${
+                                        i === 0 ? 'bg-cyan-100 text-cyan-700' :
+                                        i === 1 ? 'bg-purple-100 text-purple-700' :
+                                        'bg-emerald-100 text-emerald-700'
+                                    }`}>
+                                        {Math.round((prediction?.individual_predictions?.[['lstm', 'prophet', 'xgboost'][i]]?.weight || 0.33) * 100)}
+                                    </div>
                                 </div>
-                            </div>
-                            <div className="absolute inset-0 flex items-center justify-center bg-white/80">
-                                <button 
-                                    onClick={() => navigate('/subscription')}
-                                    className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-amber-100 text-amber-700 text-xs font-medium"
-                                >
-                                    <Lock className="w-3 h-3" /> Upgrade
-                                </button>
-                            </div>
-                        </>
-                    )}
+                            ))}
+                        </div>
+                    </div>
                 </motion.div>
                 
                 {/* Technical Indicators Preview */}
@@ -473,42 +429,23 @@ export default function BentoDashboard({ selectedAsset, assetType, onAssetSelect
                     initial={{ opacity: 0, scale: 0.95 }}
                     animate={{ opacity: 1, scale: 1 }}
                     transition={{ delay: 0.8 }}
-                    className="col-span-6 md:col-span-3 row-span-1 bg-white rounded-3xl p-5 shadow-sm border border-slate-200 relative overflow-hidden"
+                    className="col-span-6 md:col-span-3 row-span-1 bg-white rounded-3xl p-5 shadow-sm border border-slate-200"
                 >
-                    {planLimits?.show_technical_indicators ? (
-                        <div className="flex items-center justify-between h-full">
-                            <div className="flex items-center gap-2">
-                                <Activity className="w-5 h-5 text-slate-400" />
-                                <span className="text-sm font-medium text-slate-500">RSI</span>
-                            </div>
-                            <div className="text-right">
-                                <p className="text-2xl font-bold text-slate-800">
-                                    {prediction?.technical_indicators?.rsi?.toFixed(0) || '--'}
-                                </p>
-                                <p className="text-xs text-slate-400">
-                                    {(prediction?.technical_indicators?.rsi || 50) > 70 ? 'Overbought' : 
-                                     (prediction?.technical_indicators?.rsi || 50) < 30 ? 'Oversold' : 'Neutral'}
-                                </p>
-                            </div>
+                    <div className="flex items-center justify-between h-full">
+                        <div className="flex items-center gap-2">
+                            <Activity className="w-5 h-5 text-slate-400" />
+                            <span className="text-sm font-medium text-slate-500">RSI</span>
                         </div>
-                    ) : (
-                        <>
-                            <div className="filter blur-sm">
-                                <div className="flex items-center gap-2">
-                                    <Activity className="w-5 h-5" />
-                                    <span>RSI: 54</span>
-                                </div>
-                            </div>
-                            <div className="absolute inset-0 flex items-center justify-center bg-white/80">
-                                <button 
-                                    onClick={() => navigate('/subscription')}
-                                    className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-amber-100 text-amber-700 text-xs font-medium"
-                                >
-                                    <Lock className="w-3 h-3" /> Upgrade
-                                </button>
-                            </div>
-                        </>
-                    )}
+                        <div className="text-right">
+                            <p className="text-2xl font-bold text-slate-800">
+                                {prediction?.technical_indicators?.rsi?.toFixed(0) || '--'}
+                            </p>
+                            <p className="text-xs text-slate-400">
+                                {(prediction?.technical_indicators?.rsi || 50) > 70 ? 'Overbought' :
+                                 (prediction?.technical_indicators?.rsi || 50) < 30 ? 'Oversold' : 'Neutral'}
+                            </p>
+                        </div>
+                    </div>
                 </motion.div>
                 
                 {/* MACD Indicator */}
@@ -516,40 +453,21 @@ export default function BentoDashboard({ selectedAsset, assetType, onAssetSelect
                     initial={{ opacity: 0, scale: 0.95 }}
                     animate={{ opacity: 1, scale: 1 }}
                     transition={{ delay: 0.9 }}
-                    className="col-span-6 md:col-span-3 row-span-1 bg-white rounded-3xl p-5 shadow-sm border border-slate-200 relative overflow-hidden"
+                    className="col-span-6 md:col-span-3 row-span-1 bg-white rounded-3xl p-5 shadow-sm border border-slate-200"
                 >
-                    {planLimits?.show_technical_indicators ? (
-                        <div className="flex items-center justify-between h-full">
-                            <div className="flex items-center gap-2">
-                                <BarChart3 className="w-5 h-5 text-slate-400" />
-                                <span className="text-sm font-medium text-slate-500">MACD</span>
-                            </div>
-                            <div className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                                (prediction?.technical_indicators?.macd || 0) >= 0 
-                                    ? 'bg-emerald-100 text-emerald-700' 
-                                    : 'bg-red-100 text-red-700'
-                            }`}>
-                                {(prediction?.technical_indicators?.macd || 0) >= 0 ? 'Bullish' : 'Bearish'}
-                            </div>
+                    <div className="flex items-center justify-between h-full">
+                        <div className="flex items-center gap-2">
+                            <BarChart3 className="w-5 h-5 text-slate-400" />
+                            <span className="text-sm font-medium text-slate-500">MACD</span>
                         </div>
-                    ) : (
-                        <>
-                            <div className="filter blur-sm">
-                                <div className="flex items-center gap-2">
-                                    <BarChart3 className="w-5 h-5" />
-                                    <span>MACD</span>
-                                </div>
-                            </div>
-                            <div className="absolute inset-0 flex items-center justify-center bg-white/80">
-                                <button 
-                                    onClick={() => navigate('/subscription')}
-                                    className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-amber-100 text-amber-700 text-xs font-medium"
-                                >
-                                    <Lock className="w-3 h-3" /> Upgrade
-                                </button>
-                            </div>
-                        </>
-                    )}
+                        <div className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                            (prediction?.technical_indicators?.macd || 0) >= 0
+                                ? 'bg-emerald-100 text-emerald-700'
+                                : 'bg-red-100 text-red-700'
+                        }`}>
+                            {(prediction?.technical_indicators?.macd || 0) >= 0 ? 'Bullish' : 'Bearish'}
+                        </div>
+                    </div>
                 </motion.div>
                 
                 {/* Volume Card */}
@@ -572,33 +490,6 @@ export default function BentoDashboard({ selectedAsset, assetType, onAssetSelect
                     </div>
                 </motion.div>
                 
-                {/* Upgrade Banner - Only for free users */}
-                {subscription?.plan === 'free' && (
-                    <motion.div
-                        initial={{ opacity: 0, scale: 0.95 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        transition={{ delay: 1.1 }}
-                        className="col-span-12 row-span-1 bg-gradient-to-r from-amber-400 via-orange-500 to-rose-500 rounded-3xl p-5 shadow-lg"
-                    >
-                        <div className="flex items-center justify-between h-full">
-                            <div className="flex items-center gap-4">
-                                <div className="w-12 h-12 rounded-2xl bg-white/20 flex items-center justify-center">
-                                    <Crown className="w-6 h-6 text-white" />
-                                </div>
-                                <div className="text-white">
-                                    <h3 className="font-bold text-lg">Unlock Full Potential</h3>
-                                    <p className="text-sm opacity-90">Get 7-30 day forecasts, all ranges, and premium indicators</p>
-                                </div>
-                            </div>
-                            <button
-                                onClick={() => navigate('/subscription')}
-                                className="px-6 py-2.5 bg-white text-orange-600 rounded-xl font-semibold hover:bg-orange-50 transition-colors"
-                            >
-                                Upgrade to Pro
-                            </button>
-                        </div>
-                    </motion.div>
-                )}
             </div>
         </div>
     )

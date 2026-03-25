@@ -123,7 +123,6 @@ _logging.getLogger("perf").setLevel(_logging.CRITICAL)
 from .api.routes import router as api_router
 from .api.auth_routes import router as auth_router
 from .api.activity_routes import router as activity_router
-from .api.subscription_routes import router as subscription_router
 from .api.global_routes import router as global_router
 from .api.listings_routes import router as listings_router
 from .config import API_HOST, API_PORT, CORS_ORIGINS
@@ -159,7 +158,6 @@ app.add_middleware(
 app.include_router(api_router)
 app.include_router(auth_router, prefix="/api/auth", tags=["Authentication"])
 app.include_router(activity_router, prefix="/api/user", tags=["User Activity & Tracking"])
-app.include_router(subscription_router, tags=["Subscription & Payments"])
 app.include_router(global_router, tags=["Global Markets"])
 app.include_router(listings_router, tags=["New Listings"])
 
