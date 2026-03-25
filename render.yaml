@@ -6,13 +6,13 @@ services:
     dockerfilePath: ./Dockerfile
     healthCheckPath: /healthz
     envVars:
-      # Auto-generated on first deploy — never commit the actual value
-      - key: JWT_SECRET_KEY
+      # Auto-generated secure random secret for JWT signing — never commit the actual value
+      - key: SECRET_KEY
         generateValue: true
-      # CORS — accepts all origins (single-server deployment)
+      # CORS — accepts all origins (frontend is served from same Docker container)
       - key: CORS_ORIGINS
         value: "*"
-      # Optional: point to Supabase PostgreSQL for persistent storage
+      # Optional: point to PostgreSQL for persistent storage across redeploys
       # Leave unset to use SQLite (fine for single-instance free tier)
       - key: DATABASE_URL
         sync: false

@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react'
-import { motion, useScroll, useTransform, AnimatePresence } from 'framer-motion'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { motion, useScroll, useTransform, AnimatePresence, useSpring } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
 import {
     ArrowRight, Brain, Zap, Globe, LineChart,
@@ -83,6 +83,9 @@ function AuroraBackground() {
 function MockPredictionCard() {
     const [tick, setTick] = useState(0)
     const [price, setPrice] = useState(186.42)
+    const cardRef = useRef(null)
+    const rotateX = useSpring(0, { stiffness: 200, damping: 20 })
+    const rotateY = useSpring(0, { stiffness: 200, damping: 20 })
 
     useEffect(() => {
         const id = setInterval(() => {
@@ -92,19 +95,41 @@ function MockPredictionCard() {
         return () => clearInterval(id)
     }, [])
 
+    const handleMouseMove = useCallback((e) => {
+        const el = cardRef.current
+        if (!el) return
+        const { left, top, width, height } = el.getBoundingClientRect()
+        const x = (e.clientX - left) / width - 0.5
+        const y = (e.clientY - top) / height - 0.5
+        rotateY.set(x * 18)
+        rotateX.set(-y * 18)
+    }, [rotateX, rotateY])
+
+    const handleMouseLeave = useCallback(() => {
+        rotateX.set(0)
+        rotateY.set(0)
+    }, [rotateX, rotateY])
+
     return (
         <motion.div
             className="relative"
             animate={{ y: [0, -10, 0] }}
             transition={{ duration: 7, repeat: Infinity, ease: 'easeInOut' }}
+            style={{ perspective: 900 }}
         >
             {/* Card */}
             <motion.div
-                initial={{ opacity: 0, y: 40, rotateX: 8 }}
-                animate={{ opacity: 1, y: 0, rotateX: 0 }}
+                ref={cardRef}
+                initial={{ opacity: 0, y: 40, rotateX: 12 }}
+                animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 1.1, delay: 0.5, ease: [0.16, 1, 0.3, 1] }}
-                className="relative w-80 rounded-2xl overflow-hidden"
+                onMouseMove={handleMouseMove}
+                onMouseLeave={handleMouseLeave}
+                className="relative w-80 rounded-2xl overflow-hidden cursor-default"
                 style={{
+                    rotateX,
+                    rotateY,
+                    transformStyle: 'preserve-3d',
                     background: 'rgba(255,255,255,0.04)',
                     backdropFilter: 'blur(40px)',
                     border: '1px solid rgba(255,255,255,0.09)',
@@ -317,53 +342,95 @@ function MarqueeTicker() {
     )
 }
 
-// ─── Feature card ─────────────────────────────────────────────
+// ─── Feature card (3D tilt) ────────────────────────────────────
 function FeatureCard({ icon: Icon, title, desc, delay = 0, accent = C.lime }) {
     const [hovered, setHovered] = useState(false)
+    const cardRef = useRef(null)
+    const rotX = useSpring(0, { stiffness: 260, damping: 22 })
+    const rotY = useSpring(0, { stiffness: 260, damping: 22 })
+    const gX = useSpring(50, { stiffness: 200, damping: 20 })
+    const gY = useSpring(50, { stiffness: 200, damping: 20 })
+
+    const handleMouseMove = (e) => {
+        const el = cardRef.current
+        if (!el) return
+        const { left, top, width, height } = el.getBoundingClientRect()
+        const x = (e.clientX - left) / width
+        const y = (e.clientY - top) / height
+        rotY.set((x - 0.5) * 14)
+        rotX.set(-(y - 0.5) * 14)
+        gX.set(x * 100)
+        gY.set(y * 100)
+    }
+    const handleMouseLeave = () => {
+        rotX.set(0); rotY.set(0)
+        gX.set(50); gY.set(50)
+        setHovered(false)
+    }
 
     return (
         <motion.div
+            ref={cardRef}
             initial={{ opacity: 0, y: 32 }}
             whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
+            viewport={{ once: true, margin: '-60px' }}
             transition={{ delay, duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
-            onHoverStart={() => setHovered(true)}
-            onHoverEnd={() => setHovered(false)}
-            className="relative p-7 rounded-2xl overflow-hidden cursor-default group"
+            onMouseMove={handleMouseMove}
+            onMouseEnter={() => setHovered(true)}
+            onMouseLeave={handleMouseLeave}
+            className="relative p-6 rounded-2xl overflow-hidden cursor-default"
             style={{
+                rotateX: rotX, rotateY: rotY,
+                transformStyle: 'preserve-3d',
+                perspective: 800,
                 background: hovered ? 'rgba(255,255,255,0.06)' : C.bgCard,
                 border: `1px solid ${hovered ? C.borderHover : C.border}`,
-                transition: 'all 0.3s ease',
+                transition: 'background 0.3s, border-color 0.3s',
             }}
         >
-            {/* Corner glow on hover */}
+            {/* Dynamic spotlight */}
             <motion.div
-                className="absolute -top-16 -right-16 w-32 h-32 rounded-full"
-                style={{ background: `radial-gradient(circle, ${accent}20, transparent 70%)`, filter: 'blur(20px)' }}
-                animate={{ opacity: hovered ? 1 : 0 }}
-                transition={{ duration: 0.4 }}
+                className="absolute inset-0 pointer-events-none"
+                style={{
+                    background: `radial-gradient(circle at ${gX}% ${gY}%, ${accent}18 0%, transparent 60%)`,
+                    opacity: hovered ? 1 : 0,
+                    transition: 'opacity 0.3s',
+                }}
             />
 
             <div
-                className="w-12 h-12 rounded-xl flex items-center justify-center mb-5"
+                className="w-11 h-11 rounded-xl flex items-center justify-center mb-4"
                 style={{
                     background: `${accent}14`,
                     border: `1px solid ${accent}25`,
-                    transition: 'all 0.3s ease',
-                    boxShadow: hovered ? `0 0 24px ${accent}20` : 'none',
+                    boxShadow: hovered ? `0 0 24px ${accent}25` : 'none',
+                    transition: 'box-shadow 0.3s',
+                    transform: 'translateZ(20px)',
                 }}
             >
-                <Icon size={20} style={{ color: accent }} />
+                <Icon size={19} style={{ color: accent }} />
             </div>
 
             <h3
-                className="text-base font-semibold text-white mb-2"
-                style={{ fontFamily: "'Outfit', sans-serif" }}
+                className="text-sm font-semibold text-white mb-1.5"
+                style={{ fontFamily: "'Outfit', sans-serif", transform: 'translateZ(16px)' }}
             >
                 {title}
             </h3>
-            <p className="text-sm leading-relaxed" style={{ color: C.muted }}>{desc}</p>
+            <p className="text-xs leading-relaxed" style={{ color: C.muted, transform: 'translateZ(10px)' }}>{desc}</p>
         </motion.div>
+    )
+}
+
+// ─── Scroll progress bar ──────────────────────────────────────
+function ScrollProgressBar() {
+    const { scrollYProgress } = useScroll()
+    const scaleX = useSpring(scrollYProgress, { stiffness: 100, damping: 30 })
+    return (
+        <motion.div
+            className="fixed top-0 left-0 right-0 h-0.5 z-[100] origin-left"
+            style={{ scaleX, background: 'linear-gradient(90deg, #c8ff00, #00d4aa)' }}
+        />
     )
 }
 
@@ -393,6 +460,7 @@ export default function LandingPage() {
 
     return (
         <div className="relative min-h-screen text-white overflow-x-hidden" style={{ background: C.bg }}>
+            <ScrollProgressBar />
             <AuroraBackground />
 
             {/* ── Navigation ──────────────────────────── */}
@@ -678,7 +746,7 @@ export default function LandingPage() {
                         </div>
                     </div>
 
-                    <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4" style={{ perspective: '1200px' }}>
                         {features.map((f, i) => (
                             <FeatureCard key={f.title} {...f} delay={i * 0.07} />
                         ))}

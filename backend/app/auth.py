@@ -10,10 +10,14 @@ from .models.user import User
 from .config import DATA_DIR
 import os
 
-# Secret key for JWT encoding (should be in env, but generating one for now)
-SECRET_KEY = os.getenv("SECRET_KEY", "09d25e094faa6ca2556c818166b7a9563b93f7099f6f0f4caa6cf63b88e8d3e7")
+# JWT secret — must be set via SECRET_KEY env var in production (render.yaml generates it)
+SECRET_KEY = os.getenv("SECRET_KEY") or os.getenv("JWT_SECRET_KEY")
+if not SECRET_KEY:
+    import secrets as _secrets
+    SECRET_KEY = _secrets.token_hex(32)
+    print("[Auth] WARNING: SECRET_KEY not set — generated ephemeral key. Set SECRET_KEY env var in production.")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30 * 24 * 60 # 30 days for convenience
+ACCESS_TOKEN_EXPIRE_MINUTES = 7 * 24 * 60  # 7 days
 
 import hashlib
 import hmac
