@@ -421,7 +421,7 @@ NYSE_STOCKS = [
     "EMR", "ITW", "PH", "ROK", "ETN", "CMI", "IR", "DOV", "SWK", "GD",
     # Energy
     "XOM", "CVX", "COP", "SLB", "EOG", "PXD", "MPC", "VLO", "PSX", "OXY",
-    "HAL", "BKR", "DVN", "HES", "FANG", "APA", "MRO", "NOV", "KMI", "WMB",
+    "HAL", "BKR", "DVN", "FANG", "APA", "MRO", "NOV", "KMI", "WMB",
     # Materials
     "LIN", "APD", "ECL", "SHW", "PPG", "DD", "NEM", "FCX", "NUE", "CLF",
     # Real Estate

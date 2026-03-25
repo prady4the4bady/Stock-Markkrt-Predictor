@@ -3,8 +3,24 @@ NexusTrader — New Listings REST API
 Exposes the auto-discovered crypto and IPO listings to the frontend.
 """
 
+import sqlite3
 from fastapi import APIRouter, HTTPException, Query
 from typing import Optional
+
+
+def _classify(e: Exception) -> HTTPException:
+    """Map a caught exception to an appropriate HTTPException."""
+    msg = str(e)
+    lmsg = msg.lower()
+    if isinstance(e, ValueError) or "no data" in lmsg or "not found" in lmsg:
+        return HTTPException(status_code=404, detail=msg)
+    if isinstance(e, sqlite3.DatabaseError) or "database" in lmsg or "disk image" in lmsg:
+        return HTTPException(status_code=503, detail="Data store unavailable — please retry shortly.")
+    if "connection" in lmsg or "network" in lmsg or "timeout" in lmsg or "rate limit" in lmsg:
+        return HTTPException(status_code=503, detail="Data provider temporarily unavailable.")
+    if "permission" in lmsg or "access" in lmsg:
+        return HTTPException(status_code=403, detail=msg)
+    return HTTPException(status_code=500, detail=msg)
 
 from ..agents.new_listings import (
     get_new_crypto,
@@ -27,7 +43,7 @@ async def listings_summary():
     try:
         return get_summary()
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise _classify(e)
 
 
 # ── GET /api/listings/crypto ──────────────────────────────────────────────────
@@ -58,7 +74,7 @@ async def listings_crypto(
             },
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise _classify(e)
 
 
 # ── GET /api/listings/stocks ──────────────────────────────────────────────────
@@ -92,7 +108,7 @@ async def listings_stocks(
             "filters": {"status": status, "limit": limit},
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise _classify(e)
 
 
 # ── GET /api/listings/all ─────────────────────────────────────────────────────
@@ -107,7 +123,7 @@ async def listings_all(
     try:
         return get_all_new(limit=limit)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise _classify(e)
 
 
 # ── GET /api/listings/ipo ─────────────────────────────────────────────────────
@@ -120,7 +136,7 @@ async def listings_ipo(
         data = get_new_ipos(limit=limit, status="upcoming")
         return {"items": data, "count": len(data)}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise _classify(e)
 
 
 # ── POST /api/listings/refresh ────────────────────────────────────────────────
@@ -145,7 +161,7 @@ async def listings_refresh(
         new_listings_tracker.force_refresh(asset_class)
         return {"status": "refreshed", "asset_class": asset_class}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise _classify(e)
 
 
 # ── GET /api/listings/status ──────────────────────────────────────────────────

@@ -1,9 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { RefreshCw, Clock, Zap, Target, TrendingUp, TrendingDown, AlertCircle, Star, StarOff, Bell, X, Lock, Crown } from 'lucide-react'
+import { RefreshCw, Clock, Zap, Target, TrendingUp, TrendingDown, AlertCircle, Star, StarOff, Bell, X } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import axios from 'axios'
+import api from '../utils/api'
 import PredictionCard from './PredictionCard'
+import VerdictPanel from './VerdictPanel'
+import PredictionHistory from './PredictionHistory'
 import YahooChart from './YahooChart'
 import TechnicalChart from './TechnicalChart'
 import ModelWeightsChart from './ModelWeightsChart'
@@ -23,7 +26,7 @@ import { getCurrencyForSymbol, formatPriceWithCurrency, getCurrencySymbol } from
 const API_URL = '/api'
 
 export default function Dashboard({ selectedAsset, assetType, onAssetSelect }) {
-    const { user, planLimits, canUseRange, canUseForecast, subscription, refreshSubscription } = useAuth()
+    const { user, subscription } = useAuth()
     const { isDark, isLight, colors, classes } = useTheme()
     const navigate = useNavigate()
     const [prediction, setPrediction] = useState(null)
@@ -236,7 +239,7 @@ export default function Dashboard({ selectedAsset, assetType, onAssetSelect }) {
         const fetchQuote = async () => {
             if (!selectedAsset) return
             try {
-                const response = await axios.get(`${API_URL}/quote/${encodeURIComponent(selectedAsset)}`)
+                const response = await api.get(`/quote/${encodeURIComponent(selectedAsset)}`)
                 if (response.data && !response.data.error) {
                     setQuote(response.data)
                     setLastUpdate(new Date())
@@ -307,21 +310,23 @@ export default function Dashboard({ selectedAsset, assetType, onAssetSelect }) {
             // ──────────────────────────────────────────────────────────────────────
 
             // Fetch prediction
-            const predRes = await axios.get(`${API_URL}/predict/${selectedAsset}`, {
+            const predRes = await api.get(`/predict/${selectedAsset}`, {
                 params: { days: predictionDays, is_crypto: isCrypto }
             })
             setPrediction(predRes.data)
 
-            // Track prediction usage (for logged-in users)
-            if (user) {
-                try {
-                    await axios.post(`${API_URL}/subscription/use-prediction`)
-                    // Refresh subscription status to update remaining predictions
-                    refreshSubscription()
-                } catch (useErr) {
-                    console.warn('Failed to track prediction usage:', useErr)
-                }
-            }
+            // ── USE-PREDICTION TRACKING QUARANTINE ──────────────────────────
+            // Prediction counter tracking disabled — all users run predictions freely.
+            // TO RE-ENABLE: Uncomment the block below.
+            // if (user) {
+            //     try {
+            //         await api.post(`/subscription/use-prediction`)
+            //         refreshSubscription()
+            //     } catch (useErr) {
+            //         console.warn('Failed to track prediction usage:', useErr)
+            //     }
+            // }
+            // ─────────────────────────────────────────────────────────────────
 
             // Track prediction request in activity
             if (user && sessionRef.current) {
@@ -332,7 +337,7 @@ export default function Dashboard({ selectedAsset, assetType, onAssetSelect }) {
             }
 
             // Fetch historical data with period
-            const histRes = await axios.get(`${API_URL}/historical/${selectedAsset}`, {
+            const histRes = await api.get(`/historical/${selectedAsset}`, {
                 params: {
                     is_crypto: isCrypto,
                     period: period
@@ -348,13 +353,23 @@ export default function Dashboard({ selectedAsset, assetType, onAssetSelect }) {
             }
 
         } catch (err) {
-            console.error('Error fetching prediction:', err)
-            // Handle rate limits from data providers
-            if (err.response?.status === 429) {
-                setLimitError(err.response?.data?.detail || 'Rate limited by data provider. Please try again in a few minutes.')
+            const status = err.nexus?.status ?? err.response?.status ?? 0
+            const message = err.nexus?.message ?? err.response?.data?.detail ?? 'Failed to fetch prediction.'
+            const detail  = err.nexus?.detail  ?? ''
+
+            if (status === 429) {
+                setLimitError(message)
+            } else if (status === 503) {
+                // 503 = cache repaired or provider down — show with retry hint
+                setError(`${message}${detail ? ` (${detail})` : ''}`)
+            } else if (status === 404) {
+                setError(`Symbol not found — "${selectedAsset}" returned no data. Check the ticker.`)
+            } else if (status === 0) {
+                setError('Cannot reach the server — make sure the backend is running.')
             } else {
-                setError(err.response?.data?.detail || 'Failed to fetch prediction. Make sure the backend is running.')
+                setError(message)
             }
+            console.error('Prediction error:', { status, message, detail })
         } finally {
             setIsLoading(false)
         }
@@ -587,19 +602,13 @@ export default function Dashboard({ selectedAsset, assetType, onAssetSelect }) {
                     </div>
 
                     <div className="flex items-center gap-3">
-                        {/* Plan indicator */}
-                        {subscription && (
+                        {/* Plan indicator — quarantine: counter removed, all features open */}
+                        {subscription && subscription.plan !== 'free' && (
                             <div className={`flex items-center gap-2 px-3 py-1 rounded-lg text-xs font-semibold ${
                                 subscription.plan === 'elite' ? 'bg-[#c8ff00]/20 text-[#c8ff00]' :
-                                subscription.plan === 'pro' ? 'bg-[#00ff88]/20 text-[#00ff88]' :
-                                'bg-gray-500/20 text-gray-400'
+                                'bg-[#00ff88]/20 text-[#00ff88]'
                             }`}>
-                                {subscription.plan === 'free' ? '🆓' : '👑'} {subscription.plan_name || subscription.plan.toUpperCase()}
-                                {subscription.plan === 'free' && planLimits?.predictions_per_day && (
-                                    <span className="text-gray-500">
-                                        ({Math.max(0, planLimits.predictions_per_day - (subscription.predictions_today || 0))} left today)
-                                    </span>
-                                )}
+                                👑 {subscription.plan_name || subscription.plan.toUpperCase()}
                             </div>
                         )}
                         
@@ -621,33 +630,19 @@ export default function Dashboard({ selectedAsset, assetType, onAssetSelect }) {
                     {/* Range selector */}
                     <div className="flex items-center gap-2 glass-card px-4 py-2">
                         <span className="text-sm text-gray-400">Range:</span>
-                        {['1h', '12h', '1d', '1w', '1mo', '3mo', '6mo', '1y', '5y'].map(p => {
-                            const isAllowed = canUseRange(p)
-                            return (
-                                <button
-                                    key={p}
-                                    onClick={() => {
-                                        if (isAllowed) {
-                                            setPeriod(p)
-                                        } else {
-                                            setUpgradeReason(`Unlock ${p.toUpperCase()} range with Pro or Elite plan`)
-                                            setShowUpgradeModal(true)
-                                        }
-                                    }}
-                                    className={`px-2 py-1 rounded text-xs uppercase transition-all relative ${
-                                        period === p
-                                            ? 'bg-[#c8ff00] text-black font-bold'
-                                            : isAllowed
-                                                ? 'text-gray-400 hover:text-white hover:bg-white/10'
-                                                : 'text-gray-600 cursor-not-allowed opacity-50'
-                                    }`}
-                                    title={isAllowed ? p : `Upgrade to unlock ${p}`}
-                                >
-                                    {p}
-                                    {!isAllowed && <Lock className="w-2 h-2 absolute -top-1 -right-1 text-yellow-500" />}
-                                </button>
-                            )
-                        })}
+                        {['1h', '12h', '1d', '1w', '1mo', '3mo', '6mo', '1y', '5y'].map(p => (
+                            <button
+                                key={p}
+                                onClick={() => setPeriod(p)}
+                                className={`px-2 py-1 rounded text-xs uppercase transition-all ${
+                                    period === p
+                                        ? 'bg-[#c8ff00] text-black font-bold'
+                                        : 'text-gray-400 hover:text-white hover:bg-white/10'
+                                }`}
+                            >
+                                {p}
+                            </button>
+                        ))}
                     </div>
 
                     {/* Prediction period selector */}
@@ -661,33 +656,19 @@ export default function Dashboard({ selectedAsset, assetType, onAssetSelect }) {
                             { value: 7, label: '7d' },
                             { value: 14, label: '14d' },
                             { value: 30, label: '30d' }
-                        ].map(({ value, label }) => {
-                            const isAllowed = canUseForecast(value)
-                            return (
-                                <button
-                                    key={value}
-                                    onClick={() => {
-                                        if (isAllowed) {
-                                            setPredictionDays(value)
-                                        } else {
-                                            setUpgradeReason(`Unlock ${label} forecasts with Pro or Elite plan`)
-                                            setShowUpgradeModal(true)
-                                        }
-                                    }}
-                                    className={`px-3 py-1 rounded-lg text-sm transition-all relative ${
-                                        predictionDays === value
-                                            ? 'bg-[#c8ff00] text-black font-bold shadow-lg shadow-[#c8ff00]/20'
-                                            : isAllowed
-                                                ? 'text-gray-400 hover:text-white hover:bg-white/10'
-                                                : 'text-gray-600 cursor-not-allowed opacity-50'
-                                    }`}
-                                    title={isAllowed ? label : `Upgrade to unlock ${label} forecasts`}
-                                >
-                                    {label}
-                                    {!isAllowed && <Lock className="w-2 h-2 absolute -top-1 -right-1 text-yellow-500" />}
-                                </button>
-                            )
-                        })}
+                        ].map(({ value, label }) => (
+                            <button
+                                key={value}
+                                onClick={() => setPredictionDays(value)}
+                                className={`px-3 py-1 rounded-lg text-sm transition-all ${
+                                    predictionDays === value
+                                        ? 'bg-[#c8ff00] text-black font-bold shadow-lg shadow-[#c8ff00]/20'
+                                        : 'text-gray-400 hover:text-white hover:bg-white/10'
+                                }`}
+                            >
+                                {label}
+                            </button>
+                        ))}
                     </div>
                 </div>
             </motion.div>
@@ -742,7 +723,11 @@ export default function Dashboard({ selectedAsset, assetType, onAssetSelect }) {
                             title="Confidence"
                             value={`${prediction.confidence?.toFixed(1) || '0'}%`}
                             icon={<Target className="w-5 h-5" />}
-                            color="lime"
+                            color={
+                                prediction.analysis?.signals_conflict ? 'yellow' :
+                                (prediction.confidence ?? 0) >= 75 ? 'lime' :
+                                (prediction.confidence ?? 0) >= 60 ? 'yellow' : 'red'
+                            }
                             delay={0.2}
                         />
                         <PredictionCard
@@ -756,6 +741,9 @@ export default function Dashboard({ selectedAsset, assetType, onAssetSelect }) {
                             delay={0.3}
                         />
                     </div>
+
+                    {/* Verdict Panel — replaces separate signal conflict / oracle banners */}
+                    <VerdictPanel prediction={prediction} symbol={selectedAsset} />
 
                     {/* Confidence meter — Oracle signals always shown (gate quarantined) */}
                     <ConfidenceMeter
@@ -803,53 +791,11 @@ export default function Dashboard({ selectedAsset, assetType, onAssetSelect }) {
 
                     {/* Technical Analysis & Model Weights Row */}
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                        <div className="lg:col-span-2 relative">
-                            {planLimits?.show_technical_indicators ? (
-                                <TechnicalChart data={prediction.technical_indicators} />
-                            ) : (
-                                <div className="relative">
-                                    <div className="filter blur-sm pointer-events-none">
-                                        <TechnicalChart data={prediction.technical_indicators} />
-                                    </div>
-                                    <div className="absolute inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm rounded-2xl">
-                                        <div className="text-center p-6">
-                                            <Lock className="w-8 h-8 mx-auto mb-2 text-yellow-400" />
-                                            <h4 className="font-semibold text-white mb-2">Technical Indicators</h4>
-                                            <p className="text-sm text-gray-400 mb-4">Unlock RSI, MACD, Bollinger Bands & more</p>
-                                            <button
-                                                onClick={() => navigate('/subscription')}
-                                                className="px-4 py-2 rounded-lg bg-gradient-to-r from-yellow-500 to-orange-500 text-white text-sm font-semibold hover:from-yellow-400 hover:to-orange-400 transition-colors"
-                                            >
-                                                Upgrade to Pro
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
+                        <div className="lg:col-span-2">
+                            <TechnicalChart data={prediction.technical_indicators} />
                         </div>
-                        <div className="relative">
-                            {planLimits?.show_model_weights ? (
-                                <ModelWeightsChart individual={prediction.individual_predictions} />
-                            ) : (
-                                <div className="relative">
-                                    <div className="filter blur-sm pointer-events-none">
-                                        <ModelWeightsChart individual={prediction.individual_predictions} />
-                                    </div>
-                                    <div className="absolute inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm rounded-2xl">
-                                        <div className="text-center p-4">
-                                            <Lock className="w-6 h-6 mx-auto mb-2 text-yellow-400" />
-                                            <h4 className="font-semibold text-white text-sm mb-1">Model Insights</h4>
-                                            <p className="text-xs text-gray-400 mb-3">See LSTM, Prophet & XGBoost weights</p>
-                                            <button
-                                                onClick={() => navigate('/subscription')}
-                                                className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-yellow-500 to-orange-500 text-white text-xs font-semibold"
-                                            >
-                                                Upgrade
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
+                        <div>
+                            <ModelWeightsChart individual={prediction.individual_predictions} />
                         </div>
                     </div>
 
@@ -873,6 +819,9 @@ export default function Dashboard({ selectedAsset, assetType, onAssetSelect }) {
                     {prediction.advanced_analysis && (
                         <AdvancedAnalysis data={prediction.advanced_analysis} />
                     )}
+
+                    {/* Prediction Track Record — self-learning accuracy */}
+                    <PredictionHistory symbol={selectedAsset} />
 
                     {/* Bottom row */}
                     <div className="grid grid-cols-2 gap-6">
@@ -920,7 +869,10 @@ export default function Dashboard({ selectedAsset, assetType, onAssetSelect }) {
                             animate={{ opacity: 1, x: 0 }}
                             transition={{ delay: 0.6 }}
                         >
-                            <NewsFeed symbol={selectedAsset} />
+                            <NewsFeed
+                                symbol={selectedAsset}
+                                newsVerdict={prediction.analysis?.news_verdict}
+                            />
                         </motion.div>
                     </div>
 
@@ -1023,99 +975,10 @@ export default function Dashboard({ selectedAsset, assetType, onAssetSelect }) {
                 )}
             </AnimatePresence>
 
-            {/* Upgrade Modal */}
-            <AnimatePresence>
-                {showUpgradeModal && (
-                    <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center"
-                        onClick={() => setShowUpgradeModal(false)}
-                    >
-                        <motion.div
-                            initial={{ scale: 0.9, opacity: 0 }}
-                            animate={{ scale: 1, opacity: 1 }}
-                            exit={{ scale: 0.9, opacity: 0 }}
-                            className="glass-card p-8 max-w-md w-full mx-4 text-center"
-                            onClick={e => e.stopPropagation()}
-                        >
-                            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-yellow-400 to-orange-500 flex items-center justify-center">
-                                <Crown className="w-8 h-8 text-white" />
-                            </div>
-                            
-                            <h3 className="text-2xl font-bold mb-2">Upgrade to Pro</h3>
-                            <p className="text-gray-400 mb-4">{upgradeReason}</p>
-                            
-                            <div className="bg-white/5 rounded-lg p-4 mb-6 text-left">
-                                <h4 className="font-semibold text-[#c8ff00] mb-2">Pro Plan Includes:</h4>
-                                <ul className="space-y-1 text-sm text-gray-300">
-                                    <li>✓ 50 predictions per day</li>
-                                    <li>✓ Up to 7-day forecasts</li>
-                                    <li>✓ All chart ranges (1h - 3mo)</li>
-                                    <li>✓ Real-time market data</li>
-                                    <li>✓ Model confidence insights</li>
-                                    <li>✓ Technical indicators</li>
-                                    <li>✓ Export predictions to CSV</li>
-                                </ul>
-                            </div>
-                            
-                            <div className="flex gap-3">
-                                <button
-                                    onClick={() => setShowUpgradeModal(false)}
-                                    className="flex-1 py-3 rounded-lg bg-white/5 text-gray-400 hover:bg-white/10 transition-colors"
-                                >
-                                    Maybe Later
-                                </button>
-                                <button
-                                    onClick={() => {
-                                        setShowUpgradeModal(false)
-                                        navigate('/subscription')
-                                    }}
-                                    className="flex-1 py-3 rounded-lg bg-gradient-to-r from-yellow-500 to-orange-500 text-white font-semibold hover:from-yellow-400 hover:to-orange-400 transition-colors flex items-center justify-center gap-2"
-                                >
-                                    <Crown className="w-4 h-4" />
-                                    Upgrade Now
-                                </button>
-                            </div>
-                            
-                            <p className="text-xs text-gray-500 mt-4">
-                                Starting at just $9.99/month
-                            </p>
-                        </motion.div>
-                    </motion.div>
-                )}
-            </AnimatePresence>
-
-            {/* Limit Error Banner */}
-            <AnimatePresence>
-                {limitError && (
-                    <motion.div
-                        initial={{ opacity: 0, y: -20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -20 }}
-                        className="fixed top-4 left-1/2 -translate-x-1/2 z-50 glass-card px-6 py-4 border border-yellow-500/30 flex items-center gap-4"
-                    >
-                        <Lock className="w-5 h-5 text-yellow-400" />
-                        <span className="text-yellow-300">{limitError}</span>
-                        <button
-                            onClick={() => {
-                                setLimitError(null)
-                                navigate('/subscription')
-                            }}
-                            className="px-4 py-1 rounded bg-yellow-500 text-black font-semibold text-sm hover:bg-yellow-400 transition-colors"
-                        >
-                            Upgrade
-                        </button>
-                        <button
-                            onClick={() => setLimitError(null)}
-                            className="text-gray-400 hover:text-white"
-                        >
-                            <X className="w-4 h-4" />
-                        </button>
-                    </motion.div>
-                )}
-            </AnimatePresence>
+            {/* UPGRADE MODAL — QUARANTINED
+            TO RE-ENABLE: Remove this comment block and restore the JSX below.
+            showUpgradeModal / upgradeReason state vars are kept for future use.
+            */}
         </div>
     )
 }

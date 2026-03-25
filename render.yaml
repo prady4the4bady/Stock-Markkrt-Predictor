@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: nexustrader
+    env: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /healthz
+    envVars:
+      # Auto-generated on first deploy — never commit the actual value
+      - key: JWT_SECRET_KEY
+        generateValue: true
+      # PayPal (set manually in Render dashboard)
+      - key: PAYPAL_CLIENT_ID
+        sync: false
+      - key: PAYPAL_SECRET
+        sync: false
+      - key: PAYPAL_MODE
+        value: sandbox
+      # CORS — set to your frontend origin (e.g. https://nexustrader.onrender.com)
+      - key: CORS_ORIGINS
+        value: "*"
+      # Optional: point to Supabase PostgreSQL for persistent storage
+      # Leave unset to use SQLite (fine for single-instance free tier)
+      - key: DATABASE_URL
+        sync: false

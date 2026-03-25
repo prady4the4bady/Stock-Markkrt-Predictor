@@ -159,7 +159,7 @@ def init_database():
     from .models import (
         User, UserWatchlist, UserStockView, UserStockInteraction,
         UserPredictionHistory, UserPreferences, UserSession,
-        UserBehaviorPattern, AuditLog
+        UserBehaviorPattern, AuditLog, PredictionOutcome
     )
     
     # Create all tables

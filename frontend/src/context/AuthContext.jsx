@@ -49,16 +49,28 @@ export const AuthProvider = ({ children }) => {
         }
     }, [])
 
-    const fetchUser = async () => {
+    const fetchUser = async (retries = 2) => {
         try {
             const res = await axios.get('/api/auth/me')
             setUser(res.data)
             // Fetch subscription status after user is loaded
             await fetchSubscriptionStatus()
         } catch (error) {
-            console.error("Auth check failed", error)
-            setAuthToken(null)
-            setUser(null)
+            const status = error.response?.status ?? 0
+            if (status === 0 && retries > 0) {
+                // Network error — backend is likely restarting. Retry after 1.5 s.
+                await new Promise(r => setTimeout(r, 1500))
+                return fetchUser(retries - 1)
+            }
+            if (status === 401) {
+                // Token is genuinely invalid/expired — clear and force re-login.
+                setAuthToken(null)
+                setUser(null)
+            } else {
+                // Transient failure (5xx, network down after retries) — keep the
+                // token so the user isn't logged out by a backend restart.
+                console.warn('[Auth] Could not verify session, keeping token:', error.message)
+            }
         } finally {
             setLoading(false)
         }

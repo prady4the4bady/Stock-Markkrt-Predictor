@@ -1,18 +1,20 @@
 import { motion } from 'framer-motion'
 
 const LAYER_META = {
-    macro:          { label: 'Macro Environment', icon: '🌍', desc: 'VIX · Yield Curve · Dollar' },
-    market_breadth: { label: 'Market Breadth',   icon: '📊', desc: 'SPY · QQQ · IWM trend' },
-    fundamentals:   { label: 'Fundamentals',     icon: '📋', desc: 'P/E · PEG · Analyst consensus' },
-    options:        { label: 'Options Flow',      icon: '⚡', desc: 'Put/Call ratio · IV skew' },
-    smart_money:    { label: 'Smart Money',       icon: '🏦', desc: 'Insider buys · Institutional' },
-    earnings:       { label: 'Earnings Catalyst', icon: '📅', desc: 'Days-to-earnings · Beat rate' },
-    sector:         { label: 'Sector Momentum',   icon: '🔄', desc: 'Relative strength vs ETF' },
-    fear_greed:     { label: 'Fear & Greed',      icon: '😱', desc: 'CNN index · Sentiment' },
-    social:         { label: 'Social Buzz',        icon: '💬', desc: 'Reddit WSB · StockTwits' },
-    google_trends:  { label: 'Google Trends',     icon: '🔍', desc: 'Search interest surge' },
-    seasonal:       { label: 'Seasonal Pattern',  icon: '🗓️', desc: 'Month/quarter effects' },
-    cross_asset:    { label: 'Cross-Asset',        icon: '🔗', desc: 'Gold · Oil · Bonds' },
+    macro:           { label: 'Macro Environment',  icon: '🌍', desc: 'VIX · Yield Curve · Dollar' },
+    market_breadth:  { label: 'Market Breadth',     icon: '📊', desc: 'SPY · QQQ · IWM trend' },
+    fundamentals:    { label: 'Fundamentals',        icon: '📋', desc: 'P/E · PEG · Analyst consensus' },
+    options:         { label: 'Options Flow',        icon: '⚡', desc: 'Put/Call ratio · IV skew' },
+    smart_money:     { label: 'Smart Money',         icon: '🏦', desc: 'Insider buys · Institutional' },
+    earnings:        { label: 'Earnings Catalyst',   icon: '📅', desc: 'Days-to-earnings · Beat rate' },
+    sector:          { label: 'Sector Momentum',     icon: '🔄', desc: 'Relative strength vs ETF' },
+    fear_greed:      { label: 'Fear & Greed',        icon: '😱', desc: 'CNN index · Sentiment' },
+    social:          { label: 'Social Buzz',          icon: '💬', desc: 'Reddit WSB · StockTwits' },
+    google_trends:   { label: 'Google Trends',       icon: '🔍', desc: 'Search interest surge' },
+    seasonal:        { label: 'Seasonal Pattern',    icon: '🗓️', desc: 'Month/quarter effects' },
+    cross_asset:     { label: 'Cross-Asset',          icon: '🔗', desc: 'Gold · Oil · Bonds' },
+    chart_patterns:  { label: 'Chart Patterns',      icon: '🕯️', desc: 'Candlestick · MA cross · Volume' },
+    news_sentiment:  { label: 'News Sentiment',      icon: '📰', desc: 'Yahoo · Finviz · Bing News' },
 }
 
 function SignalBar({ name, score, index }) {

@@ -12,6 +12,7 @@ from .activity import (
     UserBehaviorPattern,
     AuditLog
 )
+from .prediction_tracker import PredictionOutcome
 
 __all__ = [
     'User',
@@ -22,5 +23,6 @@ __all__ = [
     'UserPreferences',
     'UserSession',
     'UserBehaviorPattern',
-    'AuditLog'
+    'AuditLog',
+    'PredictionOutcome',
 ]

@@ -51,7 +51,7 @@ class InteractionStartRequest(BaseModel):
 class InteractionUpdateRequest(BaseModel):
     session_id: str = Field(..., min_length=1)
     prediction_requested: Optional[bool] = None
-    prediction_days: Optional[int] = Field(None, ge=1, le=30)
+    prediction_days: Optional[float] = None  # float to support sub-day values like 0.04 (1h)
     chart_period_selected: Optional[str] = None
     news_viewed: Optional[bool] = None
     technical_chart_viewed: Optional[bool] = None

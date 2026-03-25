@@ -9,6 +9,116 @@ from fastapi.responses import FileResponse, JSONResponse
 from pathlib import Path
 import uvicorn
 import traceback
+import os
+import tempfile
+import sqlite3
+
+# ── yfinance cache repair ──────────────────────────────────────────────────
+# yfinance stores timezone lookups in an SQLite DB. If that DB is corrupted
+# (e.g. after a hard shutdown) every yfinance call raises DatabaseError and
+# the entire prediction API returns 500. Detect and wipe the bad files here,
+# before any import tries to open them.
+def _repair_yfinance_cache():
+    """
+    Detect and fix a corrupted yfinance timezone-cache database.
+
+    Checks every plausible cache location so this works on Windows, macOS,
+    and Linux regardless of which appdirs / platformdirs version is installed.
+    """
+    try:
+        candidate_dirs = []
+
+        # 1. Windows: AppData\Local\py-yfinance  (most common)
+        try:
+            import appdirs
+            candidate_dirs.append(Path(appdirs.user_cache_dir()) / "py-yfinance")
+            candidate_dirs.append(Path(appdirs.user_cache_dir("py-yfinance")))
+        except Exception:
+            pass
+
+        # 2. platformdirs (newer yfinance versions)
+        try:
+            import platformdirs
+            candidate_dirs.append(Path(platformdirs.user_cache_dir("py-yfinance")))
+        except Exception:
+            pass
+
+        # 3. XDG / Unix fallback (~/.cache/py-yfinance)
+        candidate_dirs.append(Path.home() / ".cache" / "py-yfinance")
+
+        # De-duplicate and only keep directories that actually exist
+        seen = set()
+        dirs_to_check = []
+        for d in candidate_dirs:
+            key = str(d.resolve()) if d.exists() else str(d)
+            if key not in seen:
+                seen.add(key)
+                if d.exists():
+                    dirs_to_check.append(d)
+
+        needs_redirect = False
+
+        for cache_dir in dirs_to_check:
+            # Check 1: orphaned WAL files (no matching .db)
+            # SQLite will corrupt any new .db it creates when an orphaned
+            # .db-wal sits alongside it.
+            for wal in cache_dir.rglob("*.db-wal"):
+                db = Path(str(wal)[:-4])  # strip the trailing -wal → base .db path
+                if not db.exists():
+                    try:
+                        wal.unlink()
+                        shm = Path(str(wal).replace("-wal", "-shm"))
+                        if shm.exists():
+                            shm.unlink()
+                        print(f"[yfinance] Removed orphaned WAL: {wal}")
+                    except OSError:
+                        needs_redirect = True
+
+            # Check 2: existing .db files that fail SQLite integrity_check
+            for db_file in cache_dir.rglob("*.db"):
+                try:
+                    conn = sqlite3.connect(str(db_file), timeout=2)
+                    ok = conn.execute("PRAGMA integrity_check").fetchone()
+                    conn.close()
+                    if not ok or ok[0] != "ok":
+                        raise sqlite3.DatabaseError("corrupt")
+                except sqlite3.DatabaseError:
+                    stem = db_file.name
+                    for f in db_file.parent.glob(f"{stem}*"):
+                        try:
+                            f.unlink()
+                            print(f"[yfinance] Removed corrupt cache file: {f}")
+                        except OSError:
+                            needs_redirect = True
+
+        if needs_redirect:
+            # Some file(s) were locked (e.g. another process) — redirect to a tmp dir
+            tmp = Path(tempfile.mkdtemp(prefix="yf-cache-"))
+            os.environ["YF_CACHE_DIR"] = str(tmp)
+            print(f"[yfinance] Cache locked — redirected to temp dir: {tmp}")
+
+    except Exception:
+        pass  # Never break startup over cache cleanup
+
+_repair_yfinance_cache()
+
+# Now import yfinance (after cache check) and redirect cache if env var is set
+try:
+    import yfinance.cache as _yf_cache
+    _custom_cache = os.environ.get("YF_CACHE_DIR")
+    if _custom_cache:
+        _yf_cache._TzDBManager.set_location(_custom_cache)
+        _yf_cache._CookieDBManager.set_location(_custom_cache)
+        print(f"[yfinance] Redirected cache to: {_custom_cache}")
+except Exception:
+    pass
+
+# Suppress yfinance's noisy 401 "Invalid Crumb" and perf-metrics log spam.
+# These are non-fatal (predictions still succeed) but flood the uvicorn log.
+import logging as _logging
+_logging.getLogger("yfinance").setLevel(_logging.CRITICAL)
+_logging.getLogger("perf").setLevel(_logging.CRITICAL)
+# ──────────────────────────────────────────────────────────────────────────
 
 from .api.routes import router as api_router
 from .api.auth_routes import router as auth_router
@@ -32,15 +142,9 @@ app = FastAPI(
     redoc_url="/redoc"
 )
 
-# Global exception handler for debugging
-@app.exception_handler(Exception)
-async def global_exception_handler(request: Request, exc: Exception):
-    print(f"❌ Error: {exc}")
-    print(f"❌ Traceback: {traceback.format_exc()}")
-    return JSONResponse(
-        status_code=500,
-        content={"detail": str(exc)}
-    )
+# Register centralised error handlers (404/422/429/500/503 etc.)
+from .utils.error_handlers import register_error_handlers
+register_error_handlers(app)
 
 # CORS middleware for frontend
 app.add_middleware(

@@ -142,28 +142,51 @@ class MarketOracle:
 
     # Layer weights for confidence calculation (must sum to 1.0)
     _WEIGHTS = {
-        "macro":          0.16,
-        "market_breadth": 0.13,
-        "fundamentals":   0.13,
-        "options":        0.11,
-        "smart_money":    0.09,
-        "earnings":       0.08,
-        "sector":         0.08,
-        "fear_greed":     0.07,
-        "social":         0.07,   # Reddit WSB + stocktwits social sentiment
-        "google_trends":  0.04,   # Google search interest surge
+        "macro":          0.13,
+        "market_breadth": 0.11,
+        "fundamentals":   0.11,
+        "options":        0.09,
+        "smart_money":    0.08,
+        "earnings":       0.07,
+        "sector":         0.07,
+        "fear_greed":     0.06,
+        "social":         0.06,   # Reddit WSB + stocktwits social sentiment
+        "google_trends":  0.03,   # Google search interest surge
         "seasonal":       0.02,
         "cross_asset":    0.02,
+        "chart_patterns": 0.09,   # Candlestick + chart structure patterns
+        "news_sentiment": 0.06,   # Multi-source news sentiment (Finviz + Yahoo + Bing)
     }
 
     def __init__(self):
-        self._exec = ThreadPoolExecutor(max_workers=8, thread_name_prefix="oracle")
+        self._exec = ThreadPoolExecutor(max_workers=10, thread_name_prefix="oracle")
+        # Lazy-import heavy modules to avoid circular imports
+        self._chart_recog = None
+        self._news_analyzer = None
+
+    def _get_chart_recog(self):
+        if self._chart_recog is None:
+            try:
+                from .chart_patterns import chart_pattern_recognizer
+                self._chart_recog = chart_pattern_recognizer
+            except Exception:
+                self._chart_recog = False
+        return self._chart_recog or None
+
+    def _get_news_analyzer(self):
+        if self._news_analyzer is None:
+            try:
+                from .news_sentiment import news_sentiment_analyzer
+                self._news_analyzer = news_sentiment_analyzer
+            except Exception:
+                self._news_analyzer = False
+        return self._news_analyzer or None
 
     # ─── Public API ───────────────────────────────────────────────────────────
 
     def score_all(self, symbol: str, df: Optional[pd.DataFrame] = None) -> Dict:
         """
-        Run all 10 signal layers in parallel and return their scores plus
+        Run all signal layers in parallel and return their scores plus
         the combined directional bias and confidence estimate.
 
         Returns:
@@ -190,6 +213,9 @@ class MarketOracle:
             "google_trends":  lambda: self._score_google_trends(clean),
             "seasonal":       lambda: self._score_seasonal(),
             "cross_asset":    lambda: self._score_cross_asset(),
+            # New layers
+            "chart_patterns": lambda: self._score_chart_patterns(df),
+            "news_sentiment": lambda: self._score_news_sentiment(clean),
         }
 
         signals: Dict[str, float] = {}
@@ -1099,6 +1125,48 @@ class MarketOracle:
         result = max(-1.0, min(1.0, score))
         _macro_cache.set("cross", result)
         return result
+
+    # ─── Signal Layer 13: Candlestick + Chart Patterns ───────────────────────
+
+    def _score_chart_patterns(self, df: Optional[pd.DataFrame]) -> float:
+        """
+        Detect candlestick and chart structure patterns from the price DataFrame.
+        Returns [-1, +1]: bullish patterns = positive, bearish patterns = negative.
+        """
+        if df is None or len(df) < 10:
+            return 0.0
+        try:
+            recog = self._get_chart_recog()
+            if recog is None:
+                return 0.0
+            score, _ = recog.score(df)
+            return float(max(-1.0, min(1.0, score)))
+        except Exception as e:
+            print(f"[Oracle/chart_patterns] {e}")
+            return 0.0
+
+    # ─── Signal Layer 14: Multi-Source News Sentiment ─────────────────────────
+
+    def _score_news_sentiment(self, symbol: str) -> float:
+        """
+        Aggregate news sentiment from Yahoo Finance, Finviz, and Bing News.
+        Returns [-1, +1]: bullish news = positive, bearish news = negative.
+        Cached 10 minutes by news_sentiment_analyzer.
+        """
+        cached = _cache.get(f"news_{symbol}")
+        if cached is not None:
+            return cached
+        try:
+            analyzer = self._get_news_analyzer()
+            if analyzer is None:
+                return 0.0
+            score = analyzer.get_oracle_score(symbol)
+            result = float(max(-1.0, min(1.0, score)))
+            _cache.set(f"news_{symbol}", result)
+            return result
+        except Exception as e:
+            print(f"[Oracle/news_sentiment] {e}")
+            return 0.0
 
     # ─── Confidence Computation ───────────────────────────────────────────────
 

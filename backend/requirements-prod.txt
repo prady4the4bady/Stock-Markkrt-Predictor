@@ -7,7 +7,7 @@ pydantic==2.5.3
 python-multipart==0.0.6
 
 # Data Sources
-yfinance==0.2.36
+yfinance>=1.0.0
 ccxt==4.2.19
 pandas==2.1.4
 pandas-datareader==0.10.0

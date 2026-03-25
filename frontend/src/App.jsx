@@ -41,7 +41,11 @@ const AuthGuard = ({ children }) => {
 }
 
 function AppContent() {
-    const [isLoading, setIsLoading] = useState(true)
+    // Only show the intro loading screen once per browser session.
+    // Using sessionStorage prevents it re-firing on HMR reloads or remounts.
+    const [isLoading, setIsLoading] = useState(
+        () => !sessionStorage.getItem('nexus_loaded')
+    )
     const [selectedAsset, setSelectedAsset] = useState(null)
     const [assetType, setAssetType] = useState('stock')
     const [showSettings, setShowSettings] = useState(false)
@@ -51,7 +55,11 @@ function AppContent() {
     const navigate = useNavigate()
 
     useEffect(() => {
-        const timer = setTimeout(() => setIsLoading(false), 2000)
+        if (!isLoading) return
+        const timer = setTimeout(() => {
+            setIsLoading(false)
+            sessionStorage.setItem('nexus_loaded', '1')
+        }, 2000)
         return () => clearTimeout(timer)
     }, [])
 
