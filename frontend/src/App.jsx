@@ -8,7 +8,6 @@ import LoadingScreen from './components/LoadingScreen'
 import DisclaimerModal from './components/DisclaimerModal'
 import AIChatbot from './components/AIChatbot'
 import SettingsPage from './components/SettingsPage'
-import SubscriptionPage from './components/SubscriptionPage'
 import LandingPage from './components/LandingPage'
 import GlobeView from './components/GlobeView'
 import NewListings from './components/NewListings'
@@ -165,22 +164,6 @@ function App() {
                             <AppContent />
                         </AuthGuard>
                     } />
-                    <Route path="/subscription" element={
-                        <AuthGuard>
-                            <SubscriptionPage />
-                        </AuthGuard>
-                    } />
-                    <Route path="/subscription/success" element={
-                        <AuthGuard>
-                            <SubscriptionSuccess />
-                        </AuthGuard>
-                    } />
-                    <Route path="/subscription/cancel" element={
-                        <AuthGuard>
-                            <SubscriptionCancel />
-                        </AuthGuard>
-                    } />
-                    
                     {/* Catch all - redirect to home */}
                     <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>
@@ -221,150 +204,6 @@ function AuthPage({ mode }) {
                     <RegisterPage onSwitchToLogin={() => setAuthMode('login')} />
                 )}
             </div>
-        </div>
-    )
-}
-
-// Subscription success page
-function SubscriptionSuccess() {
-    const navigate = useNavigate()
-    const location = useLocation()
-    const { getToken, refreshSubscription } = useAuth()
-    const token = getToken()
-    const [processing, setProcessing] = useState(true)
-    const [result, setResult] = useState(null)
-
-    useEffect(() => {
-        const params = new URLSearchParams(location.search)
-        const subscriptionId = params.get('subscription_id')
-        const plan = params.get('plan')
-        const orderId = params.get('token') // Old order-based flow
-        
-        if (subscriptionId && plan && token) {
-            // New subscription-based flow
-            activateSubscription(plan, subscriptionId)
-        } else if (orderId && token) {
-            // Legacy order-based flow
-            captureOrder(orderId)
-        } else {
-            setProcessing(false)
-            setResult({ status: 'success', message: 'Subscription activated!' })
-        }
-    }, [location, token])
-
-    const activateSubscription = async (plan, subscriptionId) => {
-        try {
-            const response = await fetch(`/api/subscription/activate`, {
-                method: 'POST',
-                headers: { 
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}` 
-                },
-                body: JSON.stringify({ plan, subscription_id: subscriptionId })
-            })
-            const data = await response.json()
-            if (response.ok) {
-                setResult({ status: 'success', message: `Successfully subscribed to ${plan.charAt(0).toUpperCase() + plan.slice(1)} plan!` })
-                if (refreshSubscription) refreshSubscription()
-            } else {
-                setResult({ status: 'error', message: data.detail || 'Failed to activate subscription' })
-            }
-        } catch (err) {
-            setResult({ status: 'error', message: 'Failed to process subscription' })
-        } finally {
-            setProcessing(false)
-        }
-    }
-
-    const captureOrder = async (orderId) => {
-        try {
-            const response = await fetch(`/api/subscription/capture-order/${orderId}`, {
-                method: 'POST',
-                headers: { Authorization: `Bearer ${token}` }
-            })
-            const data = await response.json()
-            setResult(data)
-            if (refreshSubscription) refreshSubscription()
-        } catch (err) {
-            setResult({ status: 'error', message: 'Failed to process payment' })
-        } finally {
-            setProcessing(false)
-        }
-    }
-
-    return (
-        <div className="min-h-screen bg-[#0a0a14] flex items-center justify-center p-4">
-            <motion.div
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-8 max-w-md text-center"
-            >
-                {processing ? (
-                    <>
-                        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#c8ff00] mx-auto mb-4"></div>
-                        <p className="text-gray-400">Processing your payment...</p>
-                    </>
-                ) : result?.status === 'success' ? (
-                    <>
-                        <div className="text-6xl mb-4">🎉</div>
-                        <h2 className="text-2xl font-bold text-green-400 mb-2">Payment Successful!</h2>
-                        <p className="text-gray-400 mb-6">{result.message}</p>
-                        <button
-                            onClick={() => navigate('/')}
-                            className="px-6 py-3 bg-gradient-to-r from-[#c8ff00] to-[#00ff88] text-black rounded-xl font-semibold"
-                        >
-                            Go to Dashboard
-                        </button>
-                    </>
-                ) : (
-                    <>
-                        <div className="text-6xl mb-4">❌</div>
-                        <h2 className="text-2xl font-bold text-red-400 mb-2">Payment Failed</h2>
-                        <p className="text-gray-400 mb-6">{result?.message || 'Something went wrong'}</p>
-                        <button
-                            onClick={() => navigate('/subscription')}
-                            className="px-6 py-3 bg-white/10 hover:bg-white/20 rounded-xl font-semibold"
-                        >
-                            Try Again
-                        </button>
-                    </>
-                )}
-            </motion.div>
-        </div>
-    )
-}
-
-// Subscription cancel page
-function SubscriptionCancel() {
-    const navigate = useNavigate()
-
-    return (
-        <div className="min-h-screen bg-[#0a0a14] flex items-center justify-center p-4">
-            <motion.div
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-8 max-w-md text-center"
-            >
-                <div className="text-6xl mb-4">😔</div>
-                <h2 className="text-2xl font-bold mb-2">Payment Cancelled</h2>
-                <p className="text-gray-400 mb-6">
-                    No worries! You can always upgrade later.
-                </p>
-                <div className="flex gap-4 justify-center">
-                    <button
-                        onClick={() => navigate('/')}
-                        className="px-6 py-3 bg-white/10 hover:bg-white/20 rounded-xl font-semibold"
-                    >
-                        Go to Dashboard
-                    </button>
-                    <button
-                        onClick={() => navigate('/subscription')}
-                        className="px-6 py-3 bg-gradient-to-r from-[#c8ff00] to-[#00ff88] text-black rounded-xl font-semibold"
-                    >
-                        View Plans
-                    </button>
-                </div>
-            </motion.div>
         </div>
     )
 }

@@ -42,7 +42,7 @@ const D = {
 }
 
 export default function Sidebar({ onAssetSelect, selectedAsset, assetType, onOpenSettings, theme, onToggleTheme, activeView, onViewChange }) {
-    const { user, logout, subscription } = useAuth()
+    const { user, logout } = useAuth()
     const navigate = useNavigate()
     const [searchQuery, setSearchQuery] = useState('')
     const [globalSearchQuery, setGlobalSearchQuery] = useState('')
@@ -303,9 +303,7 @@ export default function Sidebar({ onAssetSelect, selectedAsset, assetType, onOpe
     const handleAssetClick = (asset, type) => { onAssetSelect(asset, type); setShowGlobalSearch(false); setGlobalSearchQuery('') }
     const handleLogoClick = () => navigate('/')
 
-    const planLabel = subscription?.plan === 'elite' ? '👑 Elite'
-        : subscription?.plan === 'pro' ? '⭐ Pro'
-        : 'Free'
+    const planLabel = 'Free Access'
 
     return (
         <motion.aside
