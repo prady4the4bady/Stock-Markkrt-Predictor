@@ -28,6 +28,7 @@ export default defineConfig({
           vendor:     ['react', 'react-dom', 'react-router-dom'],
           charts:     ['recharts'],
           animations: ['framer-motion'],
+          icons:      ['lucide-react'],
           // react-globe.gl bundles Three.js (~1.8MB) — isolate into its own chunk
           // so it only loads when the Globe view is opened (lazy import)
           globe:      ['react-globe.gl'],

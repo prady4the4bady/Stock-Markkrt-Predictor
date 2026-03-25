@@ -140,8 +140,9 @@ def _do_market_scan() -> None:
 
 
 def _scanner_loop() -> None:
-    """Daemon thread: run scan at startup then every 6 hours."""
+    """Daemon thread: wait for cold-start to finish, then scan every 6 hours."""
     import time as _time
+    _time.sleep(90)  # Let server fully boot before first heavy scan
     while True:
         try:
             _do_market_scan()
@@ -274,8 +275,9 @@ def _do_exchange_scan(exchange_id: str) -> None:
 
 
 def _exchange_scan_loop() -> None:
-    """Daemon: scan every exchange at startup, then every 6 hours."""
+    """Daemon: wait for cold-start to finish, then scan every exchange every 6 hours."""
     import time as _time
+    _time.sleep(120)  # Offset from main scanner so they don't overlap
     while True:
         for ex_id in _EXCHANGE_REGISTRY:
             try:

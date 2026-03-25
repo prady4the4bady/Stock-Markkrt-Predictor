@@ -4,6 +4,7 @@ Production-grade stock/crypto prediction API with secure user tracking
 """
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from pathlib import Path
@@ -145,6 +146,9 @@ app = FastAPI(
 from .utils.error_handlers import register_error_handlers
 register_error_handlers(app)
 
+# GZip compression — compresses responses >500 bytes (~70% size reduction for JSON/HTML)
+app.add_middleware(GZipMiddleware, minimum_size=500)
+
 # CORS middleware for frontend
 app.add_middleware(
     CORSMiddleware,
@@ -164,12 +168,25 @@ app.include_router(listings_router, tags=["New Listings"])
 # Serve static frontend files (after build)
 frontend_path = Path(__file__).parent.parent.parent / "frontend" / "dist"
 if frontend_path.exists():
+    # Hashed asset files (/assets/*.js, *.css) — cache for 1 year (immutable)
     app.mount("/assets", StaticFiles(directory=frontend_path / "assets"), name="assets")
-    
+
+    @app.middleware("http")
+    async def _cache_headers(request: Request, call_next):
+        response = await call_next(request)
+        path = request.url.path
+        if path.startswith("/assets/"):
+            # Vite hashes filenames — safe to cache forever
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        elif path == "/" or not path.startswith("/api"):
+            # HTML + SPA routes — always revalidate so new deploys are picked up
+            response.headers["Cache-Control"] = "no-cache"
+        return response
+
     @app.get("/")
     async def serve_frontend():
         return FileResponse(frontend_path / "index.html")
-    
+
     @app.get("/{catch_all:path}")
     async def catch_all(catch_all: str):
         file_path = frontend_path / catch_all
