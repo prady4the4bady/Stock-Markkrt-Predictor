@@ -109,24 +109,29 @@ class RealTimeFeed:
         return self.STOCK_TTL if 13 <= h < 20 else self.AFTERHOURS_TTL
 
     def _fetch_crypto(self, symbol: str) -> Optional[Dict]:
-        """Fetch real-time crypto tick via ccxt Binance."""
+        """Fetch real-time crypto tick via yfinance (BTC-USD format)."""
         try:
-            import ccxt
-            exchange = ccxt.binance({"enableRateLimit": True})
-            # Normalise to ccxt format: BTC/USDT or BTCUSDT → BTC/USDT
-            sym = symbol if "/" in symbol else f"{symbol[:3]}/USDT"
-            ticker = exchange.fetch_ticker(sym)
+            import yfinance as yf
+            # Normalise: BTC/USDT or BTCUSDT or BTC → BTC-USD
+            base = symbol.replace('/', '-').replace('_', '-').split('-')[0].split('USDT')[0]
+            yf_sym = f"{base}-USD"
+            ticker = yf.Ticker(yf_sym)
+            fi = ticker.fast_info
+            price = float(getattr(fi, "last_price", 0) or 0)
+            prev  = float(getattr(fi, "previous_close", price) or price)
+            change_pct = (price - prev) / (abs(prev) + 1e-9) * 100 if prev else 0.0
+            volume = float(getattr(fi, "three_month_average_volume", 0) or 0)
             return {
-                "price":      float(ticker.get("last") or ticker.get("close") or 0),
-                "change_pct": float(ticker.get("percentage") or 0),
-                "volume":     float(ticker.get("quoteVolume") or ticker.get("baseVolume") or 0),
-                "bid":        float(ticker.get("bid") or 0),
-                "ask":        float(ticker.get("ask") or 0),
+                "price":      price,
+                "change_pct": round(change_pct, 3),
+                "volume":     volume,
+                "bid":        price,
+                "ask":        price,
                 "ts":         time.time(),
-                "source":     "ccxt_binance",
+                "source":     "yfinance_fast",
             }
         except Exception as e:
-            print(f"[RealTimeFeed] ccxt failed for {symbol}: {e}")
+            print(f"[RealTimeFeed] yfinance crypto fetch failed for {symbol}: {e}")
             return None
 
     def _fetch_stock(self, symbol: str) -> Optional[Dict]:

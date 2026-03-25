@@ -8,7 +8,6 @@ python-multipart==0.0.6
 
 # Data Sources
 yfinance>=1.0.0
-ccxt==4.2.19
 pandas==2.1.4
 pandas-datareader==0.10.0
 

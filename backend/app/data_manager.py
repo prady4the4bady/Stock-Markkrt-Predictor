@@ -1,6 +1,6 @@
 """
 Market Oracle - Data Manager
-Fetches and caches stock/crypto data using free APIs (yfinance, ccxt)
+Fetches and caches stock/crypto data using free APIs (yfinance)
 """
 import sqlite3
 import json
@@ -14,7 +14,6 @@ from io import StringIO
 import pandas as pd
 import numpy as np
 import yfinance as yf
-import ccxt
 from sklearn.preprocessing import MinMaxScaler
 
 from .config import (
@@ -27,13 +26,11 @@ from .utils.rate_limiter import RateLimiter
 
 # YFinance: limit to 60 requests per minute
 _yf_rate_limiter = RateLimiter(max_calls=60, period_seconds=60)
-# Binance: be conservative - 50 calls per minute
-_binance_rate_limiter = RateLimiter(max_calls=50, period_seconds=60)
 
 
 
 class ExternalRateLimitError(Exception):
-    """Raised when an external data provider (yfinance, Binance/CCXT) rate limits us."""
+    """Raised when an external data provider (yfinance) rate limits us."""
 
 class DataManager:
     """
@@ -48,12 +45,6 @@ class DataManager:
         self.db_path = DATA_DIR / "cache.db"
         self.scaler = MinMaxScaler(feature_range=(0, 1))
         self._init_database()
-
-        # Initialize CCXT with Binance (no API key required for public data)
-        self.exchange = ccxt.binance({
-            'enableRateLimit': True,
-            'options': {'defaultType': 'spot'}
-        })
 
         # Coalescing helpers: key -> threading.Event, result
         self._ongoing_fetches = {}
@@ -258,45 +249,61 @@ class DataManager:
         
         return df
     
+    @staticmethod
+    def _crypto_symbol_to_yf(symbol: str) -> str:
+        """Convert 'BTC/USDT' or 'BTC-USDT' → 'BTC-USD' for yfinance."""
+        base = symbol.replace('/', '-').replace('_', '-').split('-')[0]
+        return f"{base}-USD"
+
     def fetch_crypto_data(self, symbol: str, timeframe: str = None, limit: int = None, period: str = None, interval: str = None) -> pd.DataFrame:
         """
-        Fetch crypto OHLCV data using CCXT (Binance public API - no key required)
-        
+        Fetch crypto OHLCV data via yfinance (BTC-USD format).
+        Works from any server location — no geographic restrictions.
+
         Args:
-            symbol: Trading pair (e.g., 'BTC/USDT', 'ETH/USDT')
-            timeframe: Candle timeframe (e.g., '1d', '1h')
-            limit: Number of candles to fetch
-            period: Time period (for compatibility, maps to limit)
+            symbol: Trading pair (e.g., 'BTC/USDT', 'ETH/USDT', 'BTC-USD')
+            timeframe: Candle timeframe (e.g., '1d', '1h') — mapped to yfinance interval
+            limit: Number of candles (used to derive period when no explicit period given)
+            period: yfinance period string ('1d', '5d', '1mo', '3mo', '6mo', '1y', '2y', '5y')
             interval: Alias for timeframe
-        
+
         Returns:
-            DataFrame with OHLCV data
+            DataFrame with OHLCV data (columns: timestamp, open, high, low, close, volume)
         """
-        # Handle interval parameter (from routes.py)
-        if interval:
-            interval_map = {'1m': '1m', '5m': '5m', '15m': '15m', '1h': '1h', '1d': '1d', '1wk': '1w', '1mo': '1M'}
-            timeframe = interval_map.get(interval, '1d')
-        else:
-            timeframe = timeframe or CRYPTO_TIMEFRAME
-        
-        # Map period to limit if provided
-        if period:
-            period_map = {
-                '1d': 60 if timeframe in ['1m'] else 24 if timeframe in ['1h'] else 1,
-                '5d': 500 if timeframe in ['1m', '5m'] else 120 if timeframe in ['1h'] else 5,
-                '1mo': 30, '3mo': 90, '6mo': 180,
-                '1y': 365, '2y': 730, '5y': 1825, '10y': 3650, 'max': 2000, 'ytd': 365
-            }
-            limit = period_map.get(period, CRYPTO_LIMIT)
-        else:
-            limit = limit or CRYPTO_LIMIT
-        
-        # Intraday handling and caching
-        is_intraday = timeframe in ['1m', '5m', '15m', '1h']
-        base_cache_key = self._get_cache_key(symbol.replace('/', '_'), f"crypto_{timeframe}_{limit}")
-        
-        # For intraday, use minute-granular cache to prevent repeated calls within a minute
+        # Normalise timeframe
+        tf = interval or timeframe or CRYPTO_TIMEFRAME
+        # Map CCXT-style timeframes to yfinance intervals
+        tf_map = {
+            '1m': '1m', '5m': '5m', '15m': '15m', '30m': '30m',
+            '1h': '60m', '4h': '60m', '1d': '1d', '1w': '1wk', '1M': '1mo',
+        }
+        yf_interval = tf_map.get(tf, '1d')
+        is_intraday = yf_interval in ('1m', '5m', '15m', '30m', '60m')
+
+        # Derive yfinance period from limit or explicit period
+        if not period:
+            lim = limit or CRYPTO_LIMIT
+            if yf_interval == '1d':
+                days = lim
+            elif yf_interval in ('1m',):
+                days = max(1, lim // 1440)
+            elif yf_interval in ('5m', '15m', '30m'):
+                days = max(1, lim // (288 if yf_interval == '5m' else 96 if yf_interval == '15m' else 48))
+            elif yf_interval == '60m':
+                days = max(1, lim // 24)
+            else:
+                days = lim
+            # yfinance max intraday history: 60d for 1h, 7d for <1h
+            if yf_interval == '60m':
+                days = min(days, 60)
+            elif is_intraday:
+                days = min(days, 7)
+            period = f"{days}d"
+
+        yf_symbol = self._crypto_symbol_to_yf(symbol)
+        base_cache_key = self._get_cache_key(yf_symbol, f"crypto_{yf_interval}_{period}")
         cache_key_to_use = base_cache_key
+
         if is_intraday:
             minute_key = f"{base_cache_key}_{datetime.now().strftime('%Y%m%d%H%M')}"
             cache_key_to_use = minute_key
@@ -312,71 +319,63 @@ class DataManager:
                 self.metrics['cache_hits'] += 1
                 return cached_df
 
-        # Coalescing: if another thread is already fetching this cache_key, wait for it and return its result
+        # Coalescing: wait if another thread is already fetching this key
         with self._ongoing_lock:
             if cache_key_to_use in self._ongoing_fetches:
                 event, _ = self._ongoing_fetches[cache_key_to_use]
                 print(f"[Coalesce] Waiting for ongoing fetch of {symbol}")
                 event.wait(timeout=30)
-                # After fetch completes, try to get from cache
                 cached_after = self._get_cached_data(cache_key_to_use)
                 if cached_after is not None:
                     self.metrics['cache_hits'] += 1
                     return cached_after
             else:
-                # Register this fetch
                 event = threading.Event()
                 self._ongoing_fetches[cache_key_to_use] = (event, None)
 
-        # Proceed to fetch, and ensure we clear the coalescing event when done
-        
-        print(f"[Fetching] Downloading {symbol} from Binance (timeframe={timeframe}, limit={limit})...")
-        
-        # Robust retry with exponential backoff for rate-limiting
+        print(f"[Fetching] Downloading {symbol} ({yf_symbol}) from Yahoo Finance (period={period}, interval={yf_interval})...")
+
         import time
         retries = 5
         backoff = 1
-        last_err = None
+        df = None
         for attempt in range(1, retries + 1):
             try:
-                ohlcv = self.exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
+                with _yf_rate_limiter:
+                    ticker = yf.Ticker(yf_symbol)
+                    raw = ticker.history(period=period, interval=yf_interval, auto_adjust=True)
+                if raw.empty:
+                    raise ValueError(f"yfinance returned empty data for {yf_symbol}")
+                df = raw.reset_index()
                 break
-            except ccxt.RateLimitExceeded as e:
-                last_err = e
-                print(f"[RateLimit] Binance rate limit hit for {symbol}, attempt {attempt}/{retries}, waiting {backoff}s")
-                if attempt == retries:
-                    raise ExternalRateLimitError(f"Binance rate limit for {symbol}: {e}")
-                time.sleep(backoff)
-                backoff *= 2
-                continue
-            except ccxt.ExchangeError as e:
-                last_err = e
+            except Exception as e:
                 msg = str(e).lower()
                 if 'too many requests' in msg or '429' in msg or 'rate limit' in msg:
-                    print(f"[RateLimit] Binance exchange error for {symbol}: {e}, attempt {attempt}/{retries}, waiting {backoff}s")
+                    print(f"[RateLimit] yfinance rate limit for {yf_symbol}, attempt {attempt}/{retries}, waiting {backoff}s")
                     if attempt == retries:
-                        raise ExternalRateLimitError(f"Binance rate limit for {symbol}: {e}")
+                        raise ExternalRateLimitError(f"yfinance rate limit for {yf_symbol}: {e}")
                     time.sleep(backoff)
                     backoff *= 2
-                    continue
                 else:
-                    print(f"[ExchangeError] Binance returned an error for {symbol}: {e}")
+                    print(f"[Error] Unexpected error fetching {symbol}: {e}")
                     raise
-            except Exception as e:
-                last_err = e
-                print(f"[Error] Unexpected error fetching {symbol}: {e}")
-                raise
-        else:
-            # Retries exhausted
-            raise ExternalRateLimitError(f"Rate limit exceeded for {symbol} after {retries} retries. Last error: {last_err}")
-        try:
-            df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
 
-            # Format timestamp based on timeframe
+        try:
+            # Normalise column names from yfinance
+            df.columns = [c.lower() for c in df.columns]
+            date_col = 'datetime' if 'datetime' in df.columns else 'date'
+            df = df.rename(columns={date_col: 'timestamp'})
+            # Keep only the columns we need
+            for col in ['open', 'high', 'low', 'close', 'volume']:
+                if col not in df.columns:
+                    df[col] = 0.0
+            df = df[['timestamp', 'open', 'high', 'low', 'close', 'volume']].copy()
+
+            # Format timestamp
             if is_intraday:
-                df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms').dt.strftime('%Y-%m-%d %H:%M')
+                df['timestamp'] = pd.to_datetime(df['timestamp']).dt.strftime('%Y-%m-%d %H:%M')
             else:
-                df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms').dt.strftime('%Y-%m-%d')
+                df['timestamp'] = pd.to_datetime(df['timestamp']).dt.strftime('%Y-%m-%d')
 
             # Clean NaN values
             df = df.ffill().bfill().fillna(0)
