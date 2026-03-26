@@ -55,14 +55,16 @@ async def register(user: UserCreate, db: Session = Depends(get_db)):
     if not user.terms_accepted:
         raise HTTPException(status_code=400, detail="You must accept the Terms of Service to create an account")
     
-    db_user = db.query(User).filter(User.email == user.email).first()
+    # Normalize email: lowercase + strip whitespace — must match login lookup
+    normalized_email = user.email.strip().lower()
+
+    db_user = db.query(User).filter(User.email == normalized_email).first()
     if db_user:
         raise HTTPException(status_code=400, detail="Email already registered")
 
-    # Validate password length (bcrypt has a 72-byte limit) and enforce minimum length
+    # Validate password length and enforce minimum length
     password_bytes = user.password.encode('utf-8')
-    # Debug: log length and representation to help investigate unexpected hashing errors
-    print(f"[RegisterDebug] Received registration for {user.email} - password repr: {user.password!r}, type: {type(user.password).__name__}, bytes length: {len(password_bytes)}")
+    print(f"[RegisterDebug] Received registration for {normalized_email} - bytes length: {len(password_bytes)}")
     if len(password_bytes) > 72:
         print(f"[RegisterDebug] Password bytes length {len(password_bytes)} exceeds 72")
         raise HTTPException(status_code=400, detail="Password too long (max 72 bytes). Please use a shorter password.")
@@ -83,7 +85,7 @@ async def register(user: UserCreate, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Password hashing error")
 
     new_user = User(
-        email=user.email,
+        email=normalized_email,
         hashed_password=hashed_password,
         full_name=user.full_name,
         privacy_consent=user.privacy_consent,
@@ -133,7 +135,8 @@ async def register(user: UserCreate, db: Session = Depends(get_db)):
 
 @router.post("/token", response_model=Token)
 async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.email == form_data.username).first()
+    normalized_email = form_data.username.strip().lower()
+    user = db.query(User).filter(User.email == normalized_email).first()
     if not user or not verify_password(form_data.password, user.hashed_password):
         # Track failed login attempts
         if user:

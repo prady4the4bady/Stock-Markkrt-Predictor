@@ -62,7 +62,7 @@ function AppContent() {
         const timer = setTimeout(() => {
             setIsLoading(false)
             sessionStorage.setItem('nexus_loaded', '1')
-        }, 2000)
+        }, 1000)
         return () => clearTimeout(timer)
     }, [])
 

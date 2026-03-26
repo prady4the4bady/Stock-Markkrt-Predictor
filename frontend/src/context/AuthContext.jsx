@@ -38,7 +38,7 @@ export const AuthProvider = ({ children }) => {
         } catch (error) {
             const status = error.response?.status ?? 0
             if (status === 0 && retries > 0) {
-                await new Promise(r => setTimeout(r, 1500))
+                await new Promise(r => setTimeout(r, 800))
                 return fetchUser(retries - 1)
             }
             if (status === 401) {
@@ -67,7 +67,7 @@ export const AuthProvider = ({ children }) => {
 
     const register = async (email, password, fullName, privacyConsent = true, termsAccepted = true, activityTrackingConsent = false) => {
         const res = await axios.post('/api/auth/register', {
-            email,
+            email: email.trim().toLowerCase(),
             password,
             full_name: fullName,
             privacy_consent: privacyConsent,
