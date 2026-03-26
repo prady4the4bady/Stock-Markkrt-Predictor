@@ -14,7 +14,9 @@ Endpoints:
 
 import re
 import time
+import asyncio
 import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from typing import Dict, List, Optional
 from fastapi import APIRouter, HTTPException, Query
@@ -198,6 +200,9 @@ _cache_lock = threading.Lock()
 OVERVIEW_TTL = 300   # 5 min
 COUNTRY_TTL  = 180   # 3 min
 
+# Thread pool for parallel yfinance calls — I/O-bound so more threads = faster
+_fetch_pool = ThreadPoolExecutor(max_workers=12, thread_name_prefix="globe-fetch")
+
 
 def _fetch_index(symbol: str) -> Optional[Dict]:
     """Fetch latest price and % change for a yfinance index symbol."""
@@ -217,6 +222,87 @@ def _fetch_index(symbol: str) -> Optional[Dict]:
         }
     except Exception:
         return None
+
+
+def _fetch_country_overview(code: str, info: Dict) -> Dict:
+    """Fetch overview score for one country (runs in thread pool)."""
+    primary_name, primary_sym = info["indices"][0]
+    data = _fetch_index(primary_sym)
+    if data:
+        cp = data["change_pct"]
+        score = float(np.clip(cp * 33, -100, 100))
+        status = (
+            "strong_bull" if score >= 33 else
+            "bull"        if score >= 10 else
+            "neutral"     if score >= -10 else
+            "bear"        if score >= -33 else
+            "strong_bear"
+        )
+    else:
+        cp = 0.0
+        score = 0.0
+        status = "no_data"
+    return {
+        "code":          code,
+        "name":          info["name"],
+        "emoji":         info["emoji"],
+        "lat":           info["lat"],
+        "lng":           info["lng"],
+        "score":         round(score, 1),
+        "change_pct":    round(cp, 3),
+        "currency":      info["currency"],
+        "status":        status,
+        "primary_index": primary_name,
+    }
+
+
+def _build_overview_sync() -> Dict:
+    """Fetch all 25 country scores in parallel — ~2s instead of ~25s sequential."""
+    futures = {
+        _fetch_pool.submit(_fetch_country_overview, code, info): code
+        for code, info in COUNTRY_MARKETS.items()
+    }
+    results_map: Dict[str, Dict] = {}
+    for future in as_completed(futures):
+        code = futures[future]
+        try:
+            results_map[code] = future.result()
+        except Exception:
+            info = COUNTRY_MARKETS[code]
+            results_map[code] = {
+                "code": code, "name": info["name"], "emoji": info["emoji"],
+                "lat": info["lat"], "lng": info["lng"],
+                "score": 0.0, "change_pct": 0.0,
+                "currency": info["currency"], "status": "no_data",
+                "primary_index": info["indices"][0][0],
+            }
+    # Preserve original country order
+    results = [results_map[code] for code in COUNTRY_MARKETS if code in results_map]
+    return {
+        "countries": results,
+        "timestamp": datetime.now().isoformat(),
+        "count":     len(results),
+    }
+
+
+def _warm_cache_loop() -> None:
+    """Background thread: pre-warm overview cache so users never hit a cold endpoint."""
+    import time as _time
+    _time.sleep(20)  # Brief delay after startup — let DB/models init first
+    while True:
+        try:
+            data = _build_overview_sync()
+            with _cache_lock:
+                global _overview_cache, _overview_ts
+                _overview_cache = data
+                _overview_ts = _time.time()
+        except Exception:
+            pass
+        _time.sleep(max(OVERVIEW_TTL - 30, 60))  # Re-warm 30s before TTL expires
+
+
+_warmer = threading.Thread(target=_warm_cache_loop, daemon=True, name="globe-warmer")
+_warmer.start()
 
 
 _CODE_RE = re.compile(r'^[A-Z]{2}$')
@@ -241,50 +327,16 @@ async def global_market_overview():
     Returns all country market scores for globe polygon coloring.
     Each entry: {code, name, emoji, lat, lng, score, change_pct, status}
     Score: -100 (strong bear) to +100 (strong bull).
-    Cached 5 minutes.
+    Cached 5 minutes. Fetches all 25 countries in parallel (~2s vs ~25s sequential).
     """
     global _overview_cache, _overview_ts
     with _cache_lock:
         if _overview_cache and time.time() - _overview_ts < OVERVIEW_TTL:
             return _overview_cache
 
-    results = []
-    for code, info in COUNTRY_MARKETS.items():
-        # Only primary index for overview (fast)
-        primary_name, primary_sym = info["indices"][0]
-        data = _fetch_index(primary_sym)
-        if data:
-            cp = data["change_pct"]
-            score = float(np.clip(cp * 33, -100, 100))
-            status = (
-                "strong_bull" if score >= 33 else
-                "bull"        if score >= 10 else
-                "neutral"     if score >= -10 else
-                "bear"        if score >= -33 else
-                "strong_bear"
-            )
-        else:
-            cp = 0.0
-            score = 0.0
-            status = "no_data"
-        results.append({
-            "code":       code,
-            "name":       info["name"],
-            "emoji":      info["emoji"],
-            "lat":        info["lat"],
-            "lng":        info["lng"],
-            "score":      round(score, 1),
-            "change_pct": round(cp, 3),
-            "currency":   info["currency"],
-            "status":     status,
-            "primary_index": primary_name,
-        })
+    # Run all blocking yfinance calls in a thread pool — never blocks the event loop
+    out = await asyncio.to_thread(_build_overview_sync)
 
-    out = {
-        "countries": results,
-        "timestamp": datetime.now().isoformat(),
-        "count": len(results),
-    }
     with _cache_lock:
         _overview_cache = out
         _overview_ts = time.time()

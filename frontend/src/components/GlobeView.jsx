@@ -10,7 +10,7 @@
  * Brand: #c8ff00 lime / #00d4aa teal / #0a0a0f void-black
  */
 
-import { useState, useEffect, useRef, useCallback, Suspense, lazy } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo, Suspense, lazy } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Globe2, TrendingUp, TrendingDown, Minus, X, RefreshCw,
@@ -442,6 +442,18 @@ export default function GlobeView() {
   const [hoveredCountry, setHoveredCountry] = useState(null)
   const [dims, setDims] = useState({ w: 800, h: 600 })
 
+  // Pre-compute star positions once — Math.random() in render causes flickering on every state update
+  const STARS = useMemo(() =>
+    Array.from({ length: 80 }, () => ({
+      width:    Math.random() * 2 + 0.5,
+      left:     Math.random() * 100,
+      top:      Math.random() * 100,
+      opacity:  Math.random() * 0.6 + 0.2,
+      duration: 2 + Math.random() * 4,
+      delay:    Math.random() * 4,
+    })),
+  [])
+
   // Responsive sizing
   useEffect(() => {
     const update = () => {
@@ -494,20 +506,23 @@ export default function GlobeView() {
     return () => clearInterval(iv)
   }, [fetchOverview])
 
-  // Auto-rotate (halt when panel open or hovering)
+  // Toggle auto-rotate when a country panel opens/closes
   useEffect(() => {
-    if (!globeEl.current) return
-    const controls = globeEl.current.controls?.()
-    if (!controls) return
-    controls.autoRotate = !selected
-    controls.autoRotateSpeed = 0.35
+    const ctrl = globeEl.current?.controls?.()
+    if (!ctrl) return
+    ctrl.autoRotate = !selected
   }, [selected])
 
-  // Initial camera position
-  useEffect(() => {
+  // Called once by react-globe.gl when WebGL init is complete — safe to set camera + controls here
+  const handleGlobeReady = useCallback(() => {
     if (!globeEl.current) return
-    globeEl.current.pointOfView({ lat: 20, lng: 0, altitude: 2.2 }, 1000)
-  }, [geoJson])
+    const ctrl = globeEl.current.controls?.()
+    if (ctrl) {
+      ctrl.autoRotate = true
+      ctrl.autoRotateSpeed = 0.35
+    }
+    globeEl.current.pointOfView({ lat: 20, lng: 0, altitude: 2.2 }, 1200)
+  }, [])
 
   // Map GeoJSON feature to score via ISO_A2
   const getCountryScore = useCallback((feat) => {
@@ -553,16 +568,16 @@ export default function GlobeView() {
           position: 'absolute', inset: 0,
           background: 'radial-gradient(ellipse at 50% 50%, rgba(0,10,30,0.95) 0%, #020209 100%)',
         }} />
-        {/* Static star field */}
-        {Array.from({ length: 80 }).map((_, i) => (
+        {/* Static star field — positions memoized to prevent re-render flicker */}
+        {STARS.map((star, i) => (
           <div key={i} className="absolute rounded-full" style={{
-            width: Math.random() * 2 + 0.5 + 'px',
-            height: Math.random() * 2 + 0.5 + 'px',
-            left: Math.random() * 100 + '%',
-            top: Math.random() * 100 + '%',
-            background: `rgba(255,255,255,${Math.random() * 0.6 + 0.2})`,
-            animation: `pulse ${2 + Math.random() * 4}s ease-in-out infinite`,
-            animationDelay: Math.random() * 4 + 's',
+            width:  star.width + 'px',
+            height: star.width + 'px',
+            left:   star.left + '%',
+            top:    star.top + '%',
+            background: `rgba(255,255,255,${star.opacity})`,
+            animation: `pulse ${star.duration}s ease-in-out infinite`,
+            animationDelay: star.delay + 's',
           }} />
         ))}
       </div>
@@ -646,9 +661,11 @@ export default function GlobeView() {
               ref={globeEl}
               width={selected ? dims.w - 380 : dims.w}
               height={dims.h}
+              onGlobeReady={handleGlobeReady}
 
-              // Globe appearance
-              globeImageUrl={null}
+              // Globe appearance — night Earth texture (NASA city lights) fits the space-observatory aesthetic
+              globeImageUrl="//unpkg.com/three-globe/example/img/earth-night.jpg"
+              bumpImageUrl="//unpkg.com/three-globe/example/img/earth-topology.png"
               backgroundColor="rgba(0,0,0,0)"
               atmosphereColor="#00d4aa"
               atmosphereAltitude={0.18}
