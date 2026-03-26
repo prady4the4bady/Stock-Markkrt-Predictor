@@ -469,16 +469,15 @@ export default function GlobeView() {
     return () => window.removeEventListener('resize', update)
   }, [])
 
-  // Load GeoJSON once (countries polygons for the globe)
+  // Load GeoJSON once — bundled locally in /public so no external HTTP call
   useEffect(() => {
-    fetch('https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson')
+    fetch('/countries.geojson')
       .then(r => r.json())
       .then(data => {
         setGeoJson(data)
         setLoading(false)
       })
       .catch(() => {
-        // Fallback: minimal placeholder so globe still renders
         setGeoJson({ type: 'FeatureCollection', features: [] })
         setLoading(false)
       })
