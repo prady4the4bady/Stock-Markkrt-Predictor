@@ -12,7 +12,6 @@ services:
       # CORS — accepts all origins (frontend is served from same Docker container)
       - key: CORS_ORIGINS
         value: "*"
-      # Optional: point to PostgreSQL for persistent storage across redeploys
-      # Leave unset to use SQLite (fine for single-instance free tier)
+      # Supabase PostgreSQL — set DATABASE_URL in Render dashboard environment section
       - key: DATABASE_URL
         sync: false
