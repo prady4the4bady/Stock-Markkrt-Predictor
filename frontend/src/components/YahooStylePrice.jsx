@@ -110,22 +110,31 @@ export default function YahooStylePrice({
     showDetails = true,
     size = 'large',
     lastUpdate,
-    symbol // New prop for currency detection
+    symbol, // New prop for currency detection
+    livePrice,   // SSE live price override
+    priceFlash,  // 'up' | 'down' | null — SSE flash signal
 }) {
     const [flash, setFlash] = useState(null)
     const prevPrice = useRef(price)
-    
+
     // Get currency info for the symbol
     const currencyInfo = getCurrencyForSymbol(symbol)
     const hasLocalCurrency = isNonUSD(symbol)
     const currencySymbol = currencyInfo.symbol
-    
-    const decimals = price > 1 ? 2 : 4
+
+    // Use livePrice from SSE if available, else fall back to prop price
+    const displayPrice = livePrice ?? price
+
+    const decimals = displayPrice > 1 ? 2 : 4
     const isPos = change >= 0
     const changeColor = isPos ? 'text-green-400' : 'text-red-400'
 
-    // Flash effect on price change
+    // Flash effect from SSE priceFlash prop (external) or internal price change detection
     useEffect(() => {
+        if (priceFlash) {
+            setFlash(priceFlash)
+            return
+        }
         if (price != null && prevPrice.current != null && price !== prevPrice.current) {
             setFlash(price > prevPrice.current ? 'up' : 'down')
             const t = setTimeout(() => setFlash(null), 500)
@@ -133,22 +142,47 @@ export default function YahooStylePrice({
             return () => clearTimeout(t)
         }
         prevPrice.current = price
-    }, [price])
+    }, [price, priceFlash])
+
+    // Clear internal flash after 600ms when driven by SSE
+    useEffect(() => {
+        if (!priceFlash && flash) {
+            const t = setTimeout(() => setFlash(null), 600)
+            return () => clearTimeout(t)
+        }
+    }, [priceFlash, flash])
 
     const sizeClass = { small: 'text-2xl', medium: 'text-3xl', large: 'text-4xl' }[size]
-    const flashBg = flash === 'up' ? 'bg-green-500/20' : flash === 'down' ? 'bg-red-500/20' : ''
-    
+
+    // SSE-aware flash: prefer priceFlash prop, fall back to internal flash
+    const activeFlash = priceFlash || flash
+    const flashBg = activeFlash === 'up' ? 'bg-green-500/20' : activeFlash === 'down' ? 'bg-red-500/20' : ''
+
+    // SSE flash style overlay — fast CSS transition
+    const flashOverlayStyle = {
+        background: activeFlash === 'up'
+            ? 'rgba(200,255,0,0.12)'
+            : activeFlash === 'down'
+                ? 'rgba(255,85,0,0.12)'
+                : 'transparent',
+        transition: 'background 0.15s ease-in, background 0.6s ease-out',
+        borderRadius: 8,
+    }
+
     // Calculate USD equivalent
-    const usdPrice = hasLocalCurrency ? convertToUSD(price, currencyInfo.currency) : null
+    const usdPrice = hasLocalCurrency ? convertToUSD(displayPrice, currencyInfo.currency) : null
 
     return (
         <div className="glass-card p-5 rounded-xl">
             {/* Price row */}
             <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-4">
-                    {/* Main rolling price */}
-                    <div className={`${sizeClass} font-bold rounded-lg px-2 py-1 transition-colors duration-300 ${flashBg}`}>
-                        <RollingPrice value={price} prefix={currencySymbol} decimals={decimals} />
+                    {/* Main rolling price with SSE flash overlay */}
+                    <div
+                        className={`${sizeClass} font-bold rounded-lg px-2 py-1 transition-colors duration-300 ${flashBg}`}
+                        style={flashOverlayStyle}
+                    >
+                        <RollingPrice value={displayPrice} prefix={currencySymbol} decimals={decimals} />
                     </div>
                     
                     {/* USD equivalent for non-USD currencies */}

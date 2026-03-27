@@ -21,6 +21,7 @@ import AdvancedAnalysis from './AdvancedAnalysis'
 import TradingViewChart from './TradingViewChart'
 import PolywhaleAnalyzer from './PolywhaleAnalyzer'
 import CouncilVerdict from './CouncilVerdict'
+import PredictionAccuracy from './PredictionAccuracy'
 import activityService from '../services/ActivityService'
 import { useAuth } from '../context/AuthContext'
 import { useTheme } from '../context/ThemeContext'
@@ -48,6 +49,10 @@ export default function Dashboard({ selectedAsset, assetType, onAssetSelect }) {
     const [alertBelow, setAlertBelow] = useState('')
     const [showTVChart, setShowTVChart] = useState(false)
     const [showPolywhale, setShowPolywhale] = useState(false)
+    const [livePrice, setLivePrice] = useState(null)
+    const [priceFlash, setPriceFlash] = useState(null) // 'up' | 'down' | null
+    const [livePrices, setLivePrices] = useState({})   // symbol → {price, change_pct}
+    const esRef = useRef(null)
     // Track session for activity tracking
     const sessionRef = useRef(null)
     const previousAssetRef = useRef(null)
@@ -231,6 +236,57 @@ export default function Dashboard({ selectedAsset, assetType, onAssetSelect }) {
             fetchPrediction()
         }
     }, [selectedAsset, assetType, predictionDays, period])
+
+    // Real-time price streaming via SSE
+    useEffect(() => {
+        if (!selectedAsset) return
+
+        // Close previous connection
+        if (esRef.current) {
+            esRef.current.close()
+            esRef.current = null
+        }
+
+        const encoded = encodeURIComponent(selectedAsset)
+        const es = new EventSource(`/api/prices/stream?symbols=${encoded}`)
+        esRef.current = es
+
+        es.onmessage = (e) => {
+            try {
+                const data = JSON.parse(e.data)
+                const tick = data.ticks?.[selectedAsset.toUpperCase()]
+                if (tick?.price && tick.price > 0) {
+                    setLivePrice(prev => {
+                        if (prev !== null) {
+                            if (tick.price > prev) {
+                                setPriceFlash('up')
+                                setTimeout(() => setPriceFlash(null), 600)
+                            } else if (tick.price < prev) {
+                                setPriceFlash('down')
+                                setTimeout(() => setPriceFlash(null), 600)
+                            }
+                        }
+                        return tick.price
+                    })
+                    setLivePrices(data.ticks || {})
+                }
+            } catch {}
+        }
+
+        es.onerror = () => {
+            if (esRef.current) {
+                esRef.current.close()
+                esRef.current = null
+            }
+        }
+
+        return () => {
+            if (esRef.current) {
+                esRef.current.close()
+                esRef.current = null
+            }
+        }
+    }, [selectedAsset])
 
     // Real-time quote polling (every 60 seconds / 1 minute)
     useEffect(() => {
@@ -558,17 +614,24 @@ export default function Dashboard({ selectedAsset, assetType, onAssetSelect }) {
                             )}
                         </div>
 
-                        {/* Price Display - Local currency on top */}
+                        {/* Price Display — YahooStylePrice with SSE live flash */}
                         {quote ? (
-                            <div className="flex items-baseline gap-3">
-                                <span className="text-4xl font-bold font-mono">
-                                    {getCurrencySymbol(getCurrencyForSymbol(selectedAsset).currency)}{quote.price?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                </span>
-                                <span className={`text-lg font-semibold ${quote.change >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                    {quote.change >= 0 ? '+' : ''}{quote.change?.toFixed(2)} ({quote.change_percent >= 0 ? '+' : ''}{quote.change_percent?.toFixed(2)}%)
-                                </span>
-                                <span className="text-xs text-gray-500">{getCurrencyForSymbol(selectedAsset).currency}</span>
-                            </div>
+                            <YahooStylePrice
+                                price={livePrice ?? quote.price}
+                                change={quote.change}
+                                changePercent={quote.change_percent}
+                                open={quote.open}
+                                high={quote.high}
+                                low={quote.low}
+                                prevClose={quote.prev_close}
+                                volume={quote.volume}
+                                showDetails={false}
+                                size="large"
+                                lastUpdate={lastUpdate}
+                                symbol={selectedAsset}
+                                livePrice={livePrice}
+                                priceFlash={priceFlash}
+                            />
                         ) : (
                             <div className="h-10 w-48 skeleton rounded-lg"></div>
                         )}
@@ -717,6 +780,9 @@ export default function Dashboard({ selectedAsset, assetType, onAssetSelect }) {
 
                     {/* Model Council Verdict */}
                     <CouncilVerdict verdict={prediction.council_verdict} symbol={selectedAsset} />
+
+                    {/* Self-Learning Accuracy Panel */}
+                    <PredictionAccuracy />
 
                     {/* Kimi K2.5 AI Brief */}
                     {prediction.ai_brief && (

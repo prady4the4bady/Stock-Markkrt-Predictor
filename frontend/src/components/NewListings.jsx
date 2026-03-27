@@ -316,20 +316,266 @@ function SummaryBar({ summary }) {
   );
 }
 
+// ── ETF table ────────────────────────────────────────────────────────────────
+function ETFTable({ items, onPredict }) {
+  return (
+    <div className="overflow-x-auto rounded-xl border border-white/5">
+      <table className="w-full text-sm">
+        <thead className="bg-white/3">
+          <tr>
+            {['Symbol', 'Name', 'Issuer', 'Category', 'Price', 'Change %', 'Expense Ratio', 'AUM', 'Actions'].map(h => (
+              <th key={h} className="py-2 px-3 text-[10px] text-left font-semibold text-gray-500 uppercase tracking-widest">
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((item, idx) => (
+            <motion.tr
+              key={item.symbol + idx}
+              initial={{ opacity: 0, y: 4 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: idx * 0.01 }}
+              className="border-t border-white/4 hover:bg-white/4 transition-colors group"
+            >
+              <td className="py-2.5 px-3">
+                <div className="font-semibold text-white text-xs">{item.symbol || '—'}</div>
+              </td>
+              <td className="py-2.5 px-3">
+                <div className="text-xs text-gray-200 max-w-[180px] truncate" title={item.name}>{item.name || '—'}</div>
+              </td>
+              <td className="py-2.5 px-3">
+                <div className="text-xs text-gray-400">{item.issuer || '—'}</div>
+              </td>
+              <td className="py-2.5 px-3">
+                <Badge label={item.category || 'ETF'} color="purple" />
+              </td>
+              <td className="py-2.5 px-3 font-mono text-xs text-white">
+                {item.price != null ? `$${fmt(item.price)}` : '—'}
+              </td>
+              <td className="py-2.5 px-3 text-xs">
+                <ChangeCell value={item.change_pct} />
+              </td>
+              <td className="py-2.5 px-3 font-mono text-xs text-gray-300">
+                {item.expense_ratio != null ? `${fmt(item.expense_ratio, 2)}%` : '—'}
+              </td>
+              <td className="py-2.5 px-3 font-mono text-xs text-gray-300">
+                {item.aum != null ? fmtVol(item.aum) : '—'}
+              </td>
+              <td className="py-2.5 px-3">
+                {item.symbol && (
+                  <button
+                    onClick={() => onPredict?.(item.symbol)}
+                    className="opacity-0 group-hover:opacity-100 transition-opacity text-[10px] px-2 py-1 rounded bg-cyan-500/20 text-cyan-400 hover:bg-cyan-500/30 border border-cyan-500/30"
+                  >
+                    <span className="flex items-center gap-1"><BarChart2 size={9} /> Predict</span>
+                  </button>
+                )}
+              </td>
+            </motion.tr>
+          ))}
+          {items.length === 0 && (
+            <tr>
+              <td colSpan={9} className="py-12 text-center text-gray-500 text-sm">
+                No ETF data available
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ── Bond table ───────────────────────────────────────────────────────────────
+function BondTable({ items }) {
+  return (
+    <div className="overflow-x-auto rounded-xl border border-white/5">
+      <table className="w-full text-sm">
+        <thead className="bg-white/3">
+          <tr>
+            {['Name', 'Rate (%)', 'Change (bps)', 'Category'].map(h => (
+              <th key={h} className="py-2 px-3 text-[10px] text-left font-semibold text-gray-500 uppercase tracking-widest">
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((item, idx) => (
+            <motion.tr
+              key={item.name + idx}
+              initial={{ opacity: 0, y: 4 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: idx * 0.02 }}
+              className="border-t border-white/4 hover:bg-white/4 transition-colors"
+            >
+              <td className="py-2.5 px-3">
+                <div className="text-xs text-gray-200 max-w-[220px] truncate" title={item.name}>{item.name || '—'}</div>
+              </td>
+              <td className="py-2.5 px-3 font-mono text-xs text-white">
+                {item.rate != null ? `${fmt(item.rate, 3)}%` : '—'}
+              </td>
+              <td className="py-2.5 px-3 text-xs">
+                {item.change_bps != null ? (
+                  <span className={item.change_bps > 0 ? 'text-emerald-400' : item.change_bps < 0 ? 'text-red-400' : 'text-gray-400'}>
+                    {item.change_bps > 0 ? '+' : ''}{fmt(item.change_bps, 1)} bps
+                  </span>
+                ) : '—'}
+              </td>
+              <td className="py-2.5 px-3">
+                <Badge label={item.category || 'Bond'} color="amber" />
+              </td>
+            </motion.tr>
+          ))}
+          {items.length === 0 && (
+            <tr>
+              <td colSpan={4} className="py-12 text-center text-gray-500 text-sm">
+                No bond data available
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ── Index table ───────────────────────────────────────────────────────────────
+function IndexTable({ items, onPredict }) {
+  return (
+    <div className="overflow-x-auto rounded-xl border border-white/5">
+      <table className="w-full text-sm">
+        <thead className="bg-white/3">
+          <tr>
+            {['Name', 'Region', 'Price', 'Change %', 'Currency', 'Actions'].map(h => (
+              <th key={h} className="py-2 px-3 text-[10px] text-left font-semibold text-gray-500 uppercase tracking-widest">
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((item, idx) => (
+            <motion.tr
+              key={item.symbol + idx}
+              initial={{ opacity: 0, y: 4 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: idx * 0.02 }}
+              className="border-t border-white/4 hover:bg-white/4 transition-colors group"
+            >
+              <td className="py-2.5 px-3">
+                <div className="font-semibold text-white text-xs">{item.name || item.symbol || '—'}</div>
+                <div className="text-[10px] text-gray-500">{item.symbol}</div>
+              </td>
+              <td className="py-2.5 px-3">
+                <Badge label={item.region || 'Global'} color="cyan" />
+              </td>
+              <td className="py-2.5 px-3 font-mono text-xs text-white">
+                {item.price != null ? fmt(item.price) : '—'}
+              </td>
+              <td className="py-2.5 px-3 text-xs">
+                <ChangeCell value={item.change_pct} />
+              </td>
+              <td className="py-2.5 px-3 text-xs text-gray-400">
+                {item.currency || 'USD'}
+              </td>
+              <td className="py-2.5 px-3">
+                {item.symbol && (
+                  <button
+                    onClick={() => onPredict?.(item.symbol)}
+                    className="opacity-0 group-hover:opacity-100 transition-opacity text-[10px] px-2 py-1 rounded bg-cyan-500/20 text-cyan-400 hover:bg-cyan-500/30 border border-cyan-500/30"
+                  >
+                    <span className="flex items-center gap-1"><BarChart2 size={9} /> Predict</span>
+                  </button>
+                )}
+              </td>
+            </motion.tr>
+          ))}
+          {items.length === 0 && (
+            <tr>
+              <td colSpan={6} className="py-12 text-center text-gray-500 text-sm">
+                No index data available
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ── Forex table ───────────────────────────────────────────────────────────────
+function ForexTable({ items }) {
+  return (
+    <div className="overflow-x-auto rounded-xl border border-white/5">
+      <table className="w-full text-sm">
+        <thead className="bg-white/3">
+          <tr>
+            {['Pair', 'Category', 'Rate', 'Change %'].map(h => (
+              <th key={h} className="py-2 px-3 text-[10px] text-left font-semibold text-gray-500 uppercase tracking-widest">
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((item, idx) => (
+            <motion.tr
+              key={item.pair + idx}
+              initial={{ opacity: 0, y: 4 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: idx * 0.02 }}
+              className="border-t border-white/4 hover:bg-white/4 transition-colors"
+            >
+              <td className="py-2.5 px-3">
+                <div className="font-semibold text-white text-xs font-mono">{item.pair || '—'}</div>
+              </td>
+              <td className="py-2.5 px-3">
+                <Badge label={item.category || 'Major'} color="emerald" />
+              </td>
+              <td className="py-2.5 px-3 font-mono text-xs text-white">
+                {item.rate != null ? fmt(item.rate, 4) : '—'}
+              </td>
+              <td className="py-2.5 px-3 text-xs">
+                <ChangeCell value={item.change_pct} />
+              </td>
+            </motion.tr>
+          ))}
+          {items.length === 0 && (
+            <tr>
+              <td colSpan={4} className="py-12 text-center text-gray-500 text-sm">
+                No forex data available
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 // ── Main component ───────────────────────────────────────────────────────────
 export default function NewListings({ onPredict }) {
-  const [tab, setTab] = useState('crypto');   // 'crypto' | 'stocks' | 'all'
-  const [cryptoData, setCryptoData] = useState([]);
-  const [stockData,  setStockData]  = useState([]);
-  const [summary,    setSummary]    = useState(null);
-  const [loading,    setLoading]    = useState(true);
-  const [error,      setError]      = useState(null);
-  const [refreshing, setRefreshing] = useState(false);
-  const [search,     setSearch]     = useState('');
-  const [onlyNew,    setOnlyNew]    = useState(false);
-  const [minVol,     setMinVol]     = useState(0);
-  const [lastFetch,  setLastFetch]  = useState(null);
+  const [tab, setTab] = useState('crypto');
+  const [cryptoData,  setCryptoData]  = useState([]);
+  const [stockData,   setStockData]   = useState([]);
+  const [etfData,     setEtfData]     = useState([]);
+  const [bondData,    setBondData]    = useState([]);
+  const [indexData,   setIndexData]   = useState([]);
+  const [forexData,   setForexData]   = useState([]);
+  const [summary,     setSummary]     = useState(null);
+  const [loading,     setLoading]     = useState(true);
+  const [tabLoading,  setTabLoading]  = useState(false);
+  const [error,       setError]       = useState(null);
+  const [refreshing,  setRefreshing]  = useState(false);
+  const [search,      setSearch]      = useState('');
+  const [onlyNew,     setOnlyNew]     = useState(false);
+  const [minVol,      setMinVol]      = useState(0);
+  const [lastFetch,   setLastFetch]   = useState(null);
 
+  // Fetch core data (crypto + stocks + summary) on mount
   const fetchAll = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     else setRefreshing(true);
@@ -352,13 +598,50 @@ export default function NewListings({ onPredict }) {
     }
   }, []);
 
+  // Fetch data for a specific tab (ETFs, Bonds, Indices, Forex)
+  const fetchTabData = useCallback(async (tabKey) => {
+    const endpointMap = {
+      etfs:    `${API}/etfs`,
+      bonds:   `${API}/bonds`,
+      indices: `${API}/indices`,
+      forex:   `${API}/forex`,
+    };
+    const endpoint = endpointMap[tabKey];
+    if (!endpoint) return;
+    setTabLoading(true);
+    try {
+      const res = await fetch(endpoint).then(r => r.json());
+      const items = res.items || res || [];
+      if (tabKey === 'etfs')    setEtfData(items);
+      if (tabKey === 'bonds')   setBondData(items);
+      if (tabKey === 'indices') setIndexData(items);
+      if (tabKey === 'forex')   setForexData(items);
+    } catch (e) {
+      // Silently handle — secondary tabs are non-critical
+    } finally {
+      setTabLoading(false);
+    }
+  }, []);
+
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
-  // Auto-refresh every 5 minutes
+  // Auto-refresh core data every 5 minutes
   useEffect(() => {
     const id = setInterval(() => fetchAll(true), 5 * 60 * 1000);
     return () => clearInterval(id);
   }, [fetchAll]);
+
+  // Fetch secondary tab data on tab switch; auto-refresh Indices + Forex every 60s
+  useEffect(() => {
+    const secondaryTabs = ['etfs', 'bonds', 'indices', 'forex'];
+    if (!secondaryTabs.includes(tab)) return;
+    fetchTabData(tab);
+
+    if (tab === 'indices' || tab === 'forex') {
+      const id = setInterval(() => fetchTabData(tab), 60 * 1000);
+      return () => clearInterval(id);
+    }
+  }, [tab, fetchTabData]);
 
   // Filtered crypto list
   const filteredCrypto = useMemo(() => {
@@ -381,10 +664,55 @@ export default function NewListings({ onPredict }) {
     );
   }, [stockData, search]);
 
+  const filteredEtfs = useMemo(() => {
+    if (!search) return etfData;
+    const q = search.toUpperCase();
+    return etfData.filter(e =>
+      e.symbol?.toUpperCase().includes(q) ||
+      e.name?.toUpperCase().includes(q)
+    );
+  }, [etfData, search]);
+
+  const filteredBonds = useMemo(() => {
+    if (!search) return bondData;
+    const q = search.toLowerCase();
+    return bondData.filter(b => b.name?.toLowerCase().includes(q));
+  }, [bondData, search]);
+
+  const filteredIndices = useMemo(() => {
+    if (!search) return indexData;
+    const q = search.toUpperCase();
+    return indexData.filter(i =>
+      i.name?.toUpperCase().includes(q) ||
+      i.symbol?.toUpperCase().includes(q) ||
+      i.region?.toUpperCase().includes(q)
+    );
+  }, [indexData, search]);
+
+  const filteredForex = useMemo(() => {
+    if (!search) return forexData;
+    const q = search.toUpperCase();
+    return forexData.filter(f =>
+      f.pair?.toUpperCase().includes(q) ||
+      f.category?.toUpperCase().includes(q)
+    );
+  }, [forexData, search]);
+
   const TABS = [
-    { key: 'crypto', label: 'Crypto Listings', icon: Activity, count: filteredCrypto.length },
-    { key: 'stocks', label: 'Stock IPOs',       icon: DollarSign, count: filteredStocks.length },
+    { key: 'crypto',  label: 'Crypto',   icon: Activity,   count: filteredCrypto.length },
+    { key: 'stocks',  label: 'Stocks',   icon: DollarSign, count: filteredStocks.length },
+    { key: 'etfs',    label: 'ETFs',     icon: BarChart2,  count: filteredEtfs.length },
+    { key: 'bonds',   label: 'Bonds',    icon: Globe2,     count: filteredBonds.length },
+    { key: 'indices', label: 'Indices',  icon: Globe2,     count: filteredIndices.length },
+    { key: 'forex',   label: 'Forex',    icon: DollarSign, count: filteredForex.length },
   ];
+
+  // Refresh handler for all tabs
+  const handleRefresh = () => {
+    fetchAll(true);
+    const secondaryTabs = ['etfs', 'bonds', 'indices', 'forex'];
+    if (secondaryTabs.includes(tab)) fetchTabData(tab);
+  };
 
   return (
     <div className="min-h-screen bg-[#08090c] text-white p-4 sm:p-6">
@@ -395,10 +723,10 @@ export default function NewListings({ onPredict }) {
             <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-cyan-500/20 border border-cyan-500/30">
               <Zap size={16} className="text-cyan-400" />
             </span>
-            New Listings
+            Market Listings
           </h1>
           <p className="text-gray-500 text-sm mt-0.5">
-            Auto-discovered crypto &amp; IPO listings — updated every 6h
+            Crypto, IPOs, ETFs, Bonds, Indices &amp; Forex — live market data
             {lastFetch && (
               <span className="ml-2 text-[10px] text-gray-600">
                 (last: {lastFetch.toLocaleTimeString()})
@@ -407,7 +735,7 @@ export default function NewListings({ onPredict }) {
           </p>
         </div>
         <button
-          onClick={() => fetchAll(true)}
+          onClick={handleRefresh}
           disabled={refreshing}
           className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/5 border border-white/10 text-sm text-gray-300 hover:text-white hover:bg-white/8 transition-all disabled:opacity-50"
         >
@@ -426,7 +754,7 @@ export default function NewListings({ onPredict }) {
           <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
           <input
             type="text"
-            placeholder="Search symbol or name…"
+            placeholder="Search symbol, name, or region…"
             value={search}
             onChange={e => setSearch(e.target.value)}
             className="w-full bg-white/5 border border-white/10 rounded-lg pl-8 pr-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-cyan-500/50"
@@ -464,7 +792,7 @@ export default function NewListings({ onPredict }) {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 mb-4 bg-white/3 rounded-xl p-1 w-fit">
+      <div className="flex flex-wrap gap-1 mb-4 bg-white/3 rounded-xl p-1 w-fit">
         {TABS.map(({ key, label, icon: Icon, count }) => (
           <button
             key={key}
@@ -512,12 +840,18 @@ export default function NewListings({ onPredict }) {
             exit={{ opacity: 0, y: -6 }}
             transition={{ duration: 0.2 }}
           >
-            {tab === 'crypto' && (
-              <CryptoTable items={filteredCrypto} onPredict={onPredict} />
+            {tabLoading && ['etfs', 'bonds', 'indices', 'forex'].includes(tab) && (
+              <div className="flex items-center gap-2 mb-3 text-gray-500 text-xs">
+                <div className="w-4 h-4 rounded-full border border-cyan-500/30 border-t-cyan-400 animate-spin" />
+                Loading {tab} data…
+              </div>
             )}
-            {tab === 'stocks' && (
-              <IPOTable items={filteredStocks} onPredict={onPredict} />
-            )}
+            {tab === 'crypto'  && <CryptoTable items={filteredCrypto}  onPredict={onPredict} />}
+            {tab === 'stocks'  && <IPOTable    items={filteredStocks}  onPredict={onPredict} />}
+            {tab === 'etfs'    && <ETFTable    items={filteredEtfs}    onPredict={onPredict} />}
+            {tab === 'bonds'   && <BondTable   items={filteredBonds} />}
+            {tab === 'indices' && <IndexTable  items={filteredIndices} onPredict={onPredict} />}
+            {tab === 'forex'   && <ForexTable  items={filteredForex} />}
           </motion.div>
         </AnimatePresence>
       )}

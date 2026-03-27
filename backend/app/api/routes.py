@@ -2158,6 +2158,94 @@ async def websocket_realtime(websocket: WebSocket, symbol: str):
         print(f"WebSocket error for {symbol}: {e}")
         manager.disconnect(websocket, symbol.upper())
 
+from fastapi.responses import StreamingResponse
+import json as _json
+
+# ── SSE Real-time price stream ─────────────────────────────────────────────────
+@router.get("/prices/stream")
+async def price_stream(
+    symbols: str = Query(default="AAPL,BTC/USDT,TSLA,NVDA,ETH/USDT"),
+    request: Request = None,
+):
+    """
+    Server-Sent Events endpoint. Streams live price ticks every 3 seconds.
+    Usage: const es = new EventSource('/api/prices/stream?symbols=AAPL,BTC/USDT')
+    """
+    sym_list = [s.strip().upper() for s in symbols.split(",") if s.strip()][:20]
+
+    async def generate():
+        from ..agents.realtime_feed import realtime_feed
+        import asyncio as _asyncio
+
+        while True:
+            if await request.is_disconnected():
+                break
+            ticks = {}
+            for sym in sym_list:
+                tick = realtime_feed.get_tick(sym)
+                if tick:
+                    ticks[sym] = {
+                        "price": tick.get("price"),
+                        "change_pct": tick.get("change_pct"),
+                        "volume": tick.get("volume"),
+                        "momentum": tick.get("momentum_20t"),
+                        "ts": tick.get("ts"),
+                    }
+            data = _json.dumps({"ticks": ticks, "ts": datetime.utcnow().isoformat()})
+            yield f"data: {data}\n\n"
+            await _asyncio.sleep(3)
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
+
+
+@router.get("/prices/snapshot")
+async def price_snapshot(
+    symbols: str = Query(default="AAPL,BTC/USDT,TSLA,NVDA,ETH/USDT,MSFT,SOL/USDT"),
+):
+    """Fast JSON snapshot of latest prices. No streaming."""
+    from ..agents.realtime_feed import realtime_feed
+    sym_list = [s.strip().upper() for s in symbols.split(",") if s.strip()][:30]
+    result = {}
+    for sym in sym_list:
+        tick = realtime_feed.get_tick(sym)
+        if tick:
+            result[sym] = {
+                "price": tick.get("price"),
+                "change_pct": tick.get("change_pct"),
+                "volume": tick.get("volume"),
+                "ts": tick.get("ts"),
+            }
+    return {"prices": result, "count": len(result)}
+
+
+@router.get("/performance/accuracy")
+async def get_accuracy_stats():
+    """Return prediction accuracy stats from the self-learning feedback loop."""
+    try:
+        from ..agents.feedback_loop import feedback_loop
+        return feedback_loop.get_accuracy_summary()
+    except Exception as e:
+        return {"error": str(e), "message": "Feedback loop not yet initialized"}
+
+
+@router.get("/performance/recent")
+async def get_recent_outcomes(symbol: Optional[str] = None, limit: int = Query(default=20, le=100)):
+    """Return recent evaluated predictions with actual vs predicted prices."""
+    try:
+        from ..agents.feedback_loop import feedback_loop
+        return {"outcomes": feedback_loop.get_recent_outcomes(symbol=symbol, limit=limit)}
+    except Exception as e:
+        return {"outcomes": [], "error": str(e)}
+
+
 @router.delete("/cache/{symbol:path}")
 async def clear_cache(symbol: str):
     """Clear cached model for a symbol"""

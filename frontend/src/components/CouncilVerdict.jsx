@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { BarChart2 } from 'lucide-react'
+import { BarChart2, TrendingUp, TrendingDown, Minus } from 'lucide-react'
 
 // ─── Model name shortener ─────────────────────────────────────────────────────
 const SHORT_NAMES = {
@@ -174,7 +174,7 @@ export default function CouncilVerdict({ verdict, symbol }) {
                 fontWeight: 500,
               }}
             >
-              {verdict.model_count ?? 0} / 5 models
+              {verdict.model_count ?? (Array.isArray(verdict.votes) ? verdict.votes.length : 0)} / 12 models voted
             </span>
           </div>
 
@@ -227,86 +227,114 @@ export default function CouncilVerdict({ verdict, symbol }) {
 
           {/* Individual model votes */}
           {Array.isArray(verdict.votes) && verdict.votes.length > 0 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-              {verdict.votes.map((vote, idx) => (
-                <div
-                  key={idx}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 8,
-                  }}
-                >
-                  {/* Model name */}
-                  <span
-                    style={{
-                      fontSize: 11,
-                      color: 'rgba(255,255,255,0.55)',
-                      minWidth: 100,
-                      flexShrink: 0,
-                    }}
-                  >
-                    {shortenModel(vote.model)}
-                  </span>
-
-                  {/* Direction badge */}
-                  <span
-                    style={{
-                      fontSize: 10,
-                      fontWeight: 700,
-                      letterSpacing: '0.05em',
-                      padding: '2px 7px',
-                      borderRadius: 5,
-                      background: `${directionColor(vote.direction)}22`,
-                      color: directionColor(vote.direction),
-                      border: `1px solid ${directionColor(vote.direction)}55`,
-                      minWidth: 42,
-                      textAlign: 'center',
-                    }}
-                  >
-                    {vote.direction || '—'}
-                  </span>
-
-                  {/* Confidence bar */}
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 7,
+                ...(verdict.votes.length > 6 ? {
+                  maxHeight: 220,
+                  overflowY: 'auto',
+                  paddingRight: 4,
+                  scrollbarWidth: 'thin',
+                  scrollbarColor: 'rgba(200,255,0,0.2) transparent',
+                } : {}),
+              }}
+            >
+              {verdict.votes.map((vote, idx) => {
+                const dir = (vote.direction || '').toUpperCase()
+                const DirIcon = dir === 'UP'
+                  ? TrendingUp
+                  : dir === 'DOWN'
+                    ? TrendingDown
+                    : Minus
+                const iconColor = directionColor(vote.direction)
+                return (
                   <div
+                    key={idx}
                     style={{
-                      flex: 1,
-                      height: 5,
-                      borderRadius: 3,
-                      background: 'rgba(255,255,255,0.07)',
-                      overflow: 'hidden',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
                     }}
                   >
-                    <motion.div
-                      initial={{ width: 0 }}
-                      animate={{
-                        width: `${Math.min(100, (vote.confidence ?? 0) * 100)}%`,
-                      }}
-                      transition={{ duration: 0.5, delay: idx * 0.07 }}
-                      style={{
-                        height: '100%',
-                        borderRadius: 3,
-                        background: directionColor(vote.direction),
-                        opacity: 0.75,
-                      }}
+                    {/* Direction icon */}
+                    <DirIcon
+                      size={12}
+                      style={{ color: iconColor, flexShrink: 0 }}
                     />
-                  </div>
 
-                  {/* Confidence number */}
-                  <span
-                    style={{
-                      fontSize: 10,
-                      color: 'rgba(255,255,255,0.35)',
-                      minWidth: 32,
-                      textAlign: 'right',
-                    }}
-                  >
-                    {typeof vote.confidence === 'number'
-                      ? `${(vote.confidence * 100).toFixed(0)}%`
-                      : ''}
-                  </span>
-                </div>
-              ))}
+                    {/* Model name */}
+                    <span
+                      style={{
+                        fontSize: 11,
+                        color: 'rgba(255,255,255,0.55)',
+                        minWidth: 90,
+                        flexShrink: 0,
+                      }}
+                    >
+                      {shortenModel(vote.model)}
+                    </span>
+
+                    {/* Direction badge */}
+                    <span
+                      style={{
+                        fontSize: 10,
+                        fontWeight: 700,
+                        letterSpacing: '0.05em',
+                        padding: '2px 7px',
+                        borderRadius: 5,
+                        background: `${directionColor(vote.direction)}22`,
+                        color: directionColor(vote.direction),
+                        border: `1px solid ${directionColor(vote.direction)}55`,
+                        minWidth: 42,
+                        textAlign: 'center',
+                      }}
+                    >
+                      {vote.direction || '—'}
+                    </span>
+
+                    {/* Confidence bar */}
+                    <div
+                      style={{
+                        flex: 1,
+                        height: 5,
+                        borderRadius: 3,
+                        background: 'rgba(255,255,255,0.07)',
+                        overflow: 'hidden',
+                      }}
+                    >
+                      <motion.div
+                        initial={{ width: 0 }}
+                        animate={{
+                          width: `${Math.min(100, (vote.confidence ?? 0) * 100)}%`,
+                        }}
+                        transition={{ duration: 0.5, delay: Math.min(idx, 6) * 0.07 }}
+                        style={{
+                          height: '100%',
+                          borderRadius: 3,
+                          background: directionColor(vote.direction),
+                          opacity: 0.75,
+                        }}
+                      />
+                    </div>
+
+                    {/* Confidence number */}
+                    <span
+                      style={{
+                        fontSize: 10,
+                        color: 'rgba(255,255,255,0.35)',
+                        minWidth: 32,
+                        textAlign: 'right',
+                      }}
+                    >
+                      {typeof vote.confidence === 'number'
+                        ? `${(vote.confidence * 100).toFixed(0)}%`
+                        : ''}
+                    </span>
+                  </div>
+                )
+              })}
             </div>
           )}
         </div>

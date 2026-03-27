@@ -142,28 +142,31 @@ class MarketOracle:
 
     # Layer weights for confidence calculation (must sum to 1.0)
     _WEIGHTS = {
-        "macro":           0.04,
-        "market_breadth":  0.04,
-        "fundamentals":    0.05,
-        "options":         0.04,
-        "smart_money":     0.05,
-        "earnings":        0.04,
-        "sector":          0.04,
-        "fear_greed":      0.04,
-        "social":          0.04,
-        "google_trends":   0.02,
-        "seasonal":        0.01,
-        "cross_asset":     0.02,
-        "chart_patterns":  0.05,
-        "news_sentiment":  0.04,
-        "polymarket":      0.08,
-        "bloomberg_rss":   0.03,
-        "barebone_ta":     0.05,
-        "kimi_meta":       0.08,
-        "council":         0.12,
-        "options_gex":     0.05,
-        "regime":          0.07,
-    }  # sum = 1.00
+        "macro":               0.035,
+        "market_breadth":      0.035,
+        "fundamentals":        0.044,
+        "options":             0.035,
+        "smart_money":         0.044,
+        "earnings":            0.035,
+        "sector":              0.035,
+        "fear_greed":          0.035,
+        "social":              0.035,
+        "google_trends":       0.018,
+        "seasonal":            0.009,
+        "cross_asset":         0.018,
+        "chart_patterns":      0.044,
+        "news_sentiment":      0.035,
+        "polymarket":          0.070,
+        "bloomberg_rss":       0.026,
+        "barebone_ta":         0.044,
+        "kimi_meta":           0.070,
+        "council":             0.105,
+        "options_gex":         0.044,
+        "regime":              0.061,
+        "momentum_composite":  0.050,
+        "volume_profile":      0.040,
+        "correlation_beta":    0.040,
+    }  # sum = ~1.00
 
     def __init__(self):
         self._exec = ThreadPoolExecutor(max_workers=10, thread_name_prefix="oracle")
@@ -232,6 +235,10 @@ class MarketOracle:
             "council":        lambda: self._score_council(clean),
             "options_gex":    lambda: self._score_options_gex(clean),
             "regime":         lambda: self._score_regime(df),
+            # New composite/structural signals
+            "momentum_composite": lambda: self._score_momentum_composite(clean, df),
+            "volume_profile":     lambda: self._score_volume_profile(clean, df),
+            "correlation_beta":   lambda: self._score_correlation_beta(clean, df),
         }
 
         signals: Dict[str, float] = {}
@@ -1532,6 +1539,143 @@ class MarketOracle:
 
         except Exception as e:
             print(f"[Oracle/regime] {e}")
+            return 0.0
+
+    # ─── Signal Layer: Momentum Composite ────────────────────────────────────
+
+    def _score_momentum_composite(self, symbol: str, df) -> float:
+        """
+        Composite momentum signal: RSI + MACD histogram + Rate of Change.
+        Returns [-1, +1].
+        """
+        try:
+            if df is None or len(df) < 30:
+                return 0.0
+            close = df['Close'].values.astype(float)
+
+            # RSI-14
+            delta = np.diff(close)
+            gain = np.where(delta > 0, delta, 0.0)
+            loss = np.where(delta < 0, -delta, 0.0)
+            avg_gain = np.mean(gain[-14:]) if len(gain) >= 14 else np.mean(gain)
+            avg_loss = np.mean(loss[-14:]) if len(loss) >= 14 else np.mean(loss)
+            rs = avg_gain / (avg_loss + 1e-9)
+            rsi = 100 - (100 / (1 + rs))
+            rsi_signal = (rsi - 50) / 50.0  # normalise to [-1, +1]
+
+            # MACD histogram (12-26-9)
+            if len(close) >= 26:
+                ema12 = self._ema(close, 12)
+                ema26 = self._ema(close, 26)
+                macd_line = ema12[-1] - ema26[-1]
+                signal_line = self._ema(ema12[-9:] - ema26[-9:], 9)[-1] if len(close) >= 35 else 0.0
+                macd_hist = macd_line - signal_line
+                price_range = np.std(close[-26:]) + 1e-9
+                macd_signal = np.tanh(macd_hist / price_range)
+            else:
+                macd_signal = 0.0
+
+            # Rate of Change (10-bar)
+            if len(close) >= 11:
+                roc = (close[-1] - close[-11]) / (abs(close[-11]) + 1e-9)
+                roc_signal = np.tanh(roc * 10)  # scale and clip
+            else:
+                roc_signal = 0.0
+
+            composite = rsi_signal * 0.40 + macd_signal * 0.35 + roc_signal * 0.25
+            return float(np.clip(composite, -1.0, 1.0))
+        except Exception:
+            return 0.0
+
+    def _ema(self, arr, period: int):
+        """Exponential moving average helper."""
+        if len(arr) < period:
+            return arr
+        alpha = 2.0 / (period + 1)
+        result = np.zeros(len(arr))
+        result[0] = arr[0]
+        for i in range(1, len(arr)):
+            result[i] = alpha * arr[i] + (1 - alpha) * result[i - 1]
+        return result
+
+    # ─── Signal Layer: Volume Profile ────────────────────────────────────────
+
+    def _score_volume_profile(self, symbol: str, df) -> float:
+        """
+        Volume-at-price analysis: is price above or below the high-volume node?
+        Returns [-1, +1]. Positive = price above VWAP (bullish buying pressure).
+        """
+        try:
+            if df is None or len(df) < 20:
+                return 0.0
+            close = df['Close'].values.astype(float)
+            volume = df['Volume'].values.astype(float)
+
+            # VWAP over last 20 bars
+            typical = close  # simplified; ideally (H+L+C)/3
+            vwap = np.sum(typical[-20:] * volume[-20:]) / (np.sum(volume[-20:]) + 1e-9)
+
+            # Price relative to VWAP
+            price_vs_vwap = (close[-1] - vwap) / (vwap + 1e-9)
+
+            # Volume trend: is recent volume above average?
+            avg_vol = np.mean(volume[-20:])
+            recent_vol = np.mean(volume[-3:])
+            vol_ratio = recent_vol / (avg_vol + 1e-9)
+            vol_signal = np.tanh(vol_ratio - 1.0)  # > 1 = above avg volume
+
+            # Combine: price above VWAP + high volume = bullish
+            composite = np.tanh(price_vs_vwap * 5) * 0.60 + vol_signal * 0.40
+            return float(np.clip(composite, -1.0, 1.0))
+        except Exception:
+            return 0.0
+
+    # ─── Signal Layer: Correlation / Beta ────────────────────────────────────
+
+    def _score_correlation_beta(self, symbol: str, df) -> float:
+        """
+        Market correlation signal: beta to SPY/BTC tells you risk-on/off.
+        High beta + market trending up = bullish amplifier.
+        Returns [-1, +1].
+        """
+        try:
+            import yfinance as yf
+            if df is None or len(df) < 30:
+                return 0.0
+
+            close = df['Close'].values.astype(float)
+            is_crypto = '/' in symbol or any(t in symbol.upper() for t in ['BTC', 'ETH', 'SOL'])
+
+            # Reference index
+            ref_sym = 'BTC-USD' if is_crypto else 'SPY'
+            ref_close = _macro_cache.get(f'_corr_{ref_sym}')
+            if ref_close is None:
+                ref_ticker = yf.Ticker(ref_sym)
+                ref_hist = ref_ticker.history(period='3mo', interval='1d')
+                if ref_hist.empty:
+                    return 0.0
+                ref_close = ref_hist['Close'].values.astype(float)
+                _macro_cache.set(f'_corr_{ref_sym}', ref_close)
+
+            # Align lengths
+            n = min(len(close), len(ref_close), 30)
+            asset_ret = np.diff(close[-n:]) / (close[-n:-1] + 1e-9)
+            ref_ret   = np.diff(ref_close[-n:]) / (ref_close[-n:-1] + 1e-9)
+
+            if len(asset_ret) < 5 or len(ref_ret) < 5:
+                return 0.0
+
+            # Beta
+            cov = np.cov(asset_ret, ref_ret)
+            beta = cov[0, 1] / (cov[1, 1] + 1e-9)
+
+            # Current reference momentum (5-day)
+            ref_momentum = (ref_close[-1] - ref_close[-6]) / (abs(ref_close[-6]) + 1e-9) if len(ref_close) >= 6 else 0.0
+
+            # Signal: beta × market direction
+            signal = np.tanh(beta * ref_momentum * 20)
+            return float(np.clip(signal, -1.0, 1.0))
+        except Exception:
             return 0.0
 
     # ─── Confidence Computation ───────────────────────────────────────────────

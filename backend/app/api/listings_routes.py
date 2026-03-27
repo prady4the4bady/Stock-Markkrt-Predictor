@@ -25,6 +25,10 @@ def _classify(e: Exception) -> HTTPException:
 from ..agents.new_listings import (
     get_new_crypto,
     get_new_ipos,
+    get_etfs,
+    get_bond_rates,
+    get_indices,
+    get_forex,
     get_all_new,
     get_summary,
     new_listings_tracker,
@@ -139,19 +143,79 @@ async def listings_ipo(
         raise _classify(e)
 
 
+# ── GET /api/listings/etfs ────────────────────────────────────────────────────
+@router.get("/etfs")
+async def list_etfs(
+    category: Optional[str] = Query(
+        default=None,
+        description="Filter by category: Crypto | AI/Tech | Bonds | Commodities",
+    ),
+    limit: int = Query(default=50, ge=1, le=200),
+):
+    """List ETFs, optionally filtered by category."""
+    try:
+        data = get_etfs(limit=limit, category=category)
+        return {"etfs": data, "count": len(data), "filters": {"category": category}}
+    except Exception as e:
+        raise _classify(e)
+
+
+# ── GET /api/listings/bonds ───────────────────────────────────────────────────
+@router.get("/bonds")
+async def list_bonds():
+    """List bond rates and Treasury yields."""
+    try:
+        data = get_bond_rates()
+        return {"bonds": data, "count": len(data)}
+    except Exception as e:
+        raise _classify(e)
+
+
+# ── GET /api/listings/indices ─────────────────────────────────────────────────
+@router.get("/indices")
+async def list_indices(
+    region: Optional[str] = Query(
+        default=None,
+        description="Filter by region, e.g. US | UK | Japan | India",
+    ),
+):
+    """List global market indices, optionally filtered by region."""
+    try:
+        data = get_indices(region=region)
+        return {"indices": data, "count": len(data), "filters": {"region": region}}
+    except Exception as e:
+        raise _classify(e)
+
+
+# ── GET /api/listings/forex ───────────────────────────────────────────────────
+@router.get("/forex")
+async def list_forex(
+    category: Optional[str] = Query(
+        default=None,
+        description="Filter by category: Major | Minor | Exotic",
+    ),
+):
+    """List forex currency pairs, optionally filtered by category."""
+    try:
+        data = get_forex(category=category)
+        return {"forex": data, "count": len(data), "filters": {"category": category}}
+    except Exception as e:
+        raise _classify(e)
+
+
 # ── POST /api/listings/refresh ────────────────────────────────────────────────
 @router.post("/refresh")
 async def listings_refresh(
     asset_class: str = Query(
         default="all",
-        description="Which feed to refresh: all | crypto | stocks",
+        description="Which feed to refresh: all | crypto | stocks | etfs | bonds | indices | forex",
     ),
 ):
     """
     Trigger an immediate out-of-band refresh (admin / debug use).
     Runs synchronously — may take 10-30 seconds.
     """
-    valid = {"all", "crypto", "stocks"}
+    valid = {"all", "crypto", "stocks", "etfs", "bonds", "indices", "forex"}
     if asset_class not in valid:
         raise HTTPException(
             status_code=422,

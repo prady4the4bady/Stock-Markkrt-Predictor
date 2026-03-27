@@ -19,6 +19,7 @@ const AIChatbot    = lazy(() => import('./components/AIChatbot'))
 const SettingsPage = lazy(() => import('./components/SettingsPage'))
 const GlobeView    = lazy(() => import('./components/GlobeView'))
 const NewListings  = lazy(() => import('./components/NewListings'))
+const TickerTape   = lazy(() => import('./components/TickerTape'))
 
 // Brand configuration
 export const BRAND = {
@@ -105,48 +106,54 @@ function AppContent() {
                             />
 
                             {/* Main content */}
-                            <main className="flex-1 overflow-hidden relative">
-                                <AnimatePresence mode="wait">
-                                    {activeView === 'globe' ? (
-                                        <motion.div
-                                            key="globe"
-                                            initial={{ opacity: 0, scale: 0.98 }}
-                                            animate={{ opacity: 1, scale: 1 }}
-                                            exit={{ opacity: 0, scale: 0.98 }}
-                                            transition={{ duration: 0.35 }}
-                                            className="absolute inset-0"
-                                        >
-                                            <GlobeView />
-                                        </motion.div>
-                                    ) : activeView === 'listings' ? (
-                                        <motion.div
-                                            key="listings"
-                                            initial={{ opacity: 0, x: 20 }}
-                                            animate={{ opacity: 1, x: 0 }}
-                                            exit={{ opacity: 0, x: -20 }}
-                                            transition={{ duration: 0.25 }}
-                                            className="absolute inset-0 overflow-y-auto"
-                                        >
-                                            <NewListings onPredict={(symbol) => handleAssetSelect(symbol, symbol.includes('/') ? 'crypto' : 'stock')} />
-                                        </motion.div>
-                                    ) : (
-                                        <motion.div
-                                            key="dashboard"
-                                            initial={{ opacity: 0 }}
-                                            animate={{ opacity: 1 }}
-                                            exit={{ opacity: 0 }}
-                                            transition={{ duration: 0.25 }}
-                                            className="absolute inset-0 overflow-y-auto"
-                                        >
-                                            <Dashboard
-                                                selectedAsset={selectedAsset}
-                                                assetType={assetType}
-                                                onAssetSelect={handleAssetSelect}
-                                                user={user}
-                                            />
-                                        </motion.div>
-                                    )}
-                                </AnimatePresence>
+                            <main className="flex-1 flex flex-col overflow-hidden">
+                                {/* Real-time price tape — always visible */}
+                                <TickerTape />
+
+                                {/* View container — takes remaining height */}
+                                <div className="flex-1 relative overflow-hidden">
+                                    <AnimatePresence mode="wait">
+                                        {activeView === 'globe' ? (
+                                            <motion.div
+                                                key="globe"
+                                                initial={{ opacity: 0, scale: 0.98 }}
+                                                animate={{ opacity: 1, scale: 1 }}
+                                                exit={{ opacity: 0, scale: 0.98 }}
+                                                transition={{ duration: 0.35 }}
+                                                className="absolute inset-0"
+                                            >
+                                                <GlobeView />
+                                            </motion.div>
+                                        ) : activeView === 'listings' ? (
+                                            <motion.div
+                                                key="listings"
+                                                initial={{ opacity: 0, x: 20 }}
+                                                animate={{ opacity: 1, x: 0 }}
+                                                exit={{ opacity: 0, x: -20 }}
+                                                transition={{ duration: 0.25 }}
+                                                className="absolute inset-0 overflow-y-auto"
+                                            >
+                                                <NewListings onPredict={(symbol) => handleAssetSelect(symbol, symbol.includes('/') ? 'crypto' : 'stock')} />
+                                            </motion.div>
+                                        ) : (
+                                            <motion.div
+                                                key="dashboard"
+                                                initial={{ opacity: 0 }}
+                                                animate={{ opacity: 1 }}
+                                                exit={{ opacity: 0 }}
+                                                transition={{ duration: 0.25 }}
+                                                className="absolute inset-0 overflow-y-auto"
+                                            >
+                                                <Dashboard
+                                                    selectedAsset={selectedAsset}
+                                                    assetType={assetType}
+                                                    onAssetSelect={handleAssetSelect}
+                                                    user={user}
+                                                />
+                                            </motion.div>
+                                        )}
+                                    </AnimatePresence>
+                                </div>
                             </main>
                         </Suspense>
                     </motion.div>

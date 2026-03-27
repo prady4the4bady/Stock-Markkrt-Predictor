@@ -1,7 +1,7 @@
 """
 NexusTrader — Model Council
 ============================
-Meta-ensemble that queries 5 NVIDIA NIM models in parallel, collects
+Meta-ensemble that queries 12 NVIDIA NIM models in parallel, collects
 directional votes (UP / DOWN / HOLD), and produces a weighted consensus score.
 
 All models are called via the NVIDIA NIM chat-completions endpoint using the
@@ -19,20 +19,21 @@ from typing import Dict, List, Optional, Tuple
 # Council model roster
 # ─────────────────────────────────────────────────────────────────────────────
 COUNCIL_MODELS: List[Dict] = [
+    # Tier 1 — Reasoning/Thinking (highest weight)
     {
-        "id": "nvidia/nemotron-3-super-120b-a12b",
-        "short_name": "Nemotron-120B",
-        "weight": 0.25,
+        "id": "nvidia/llama-3.1-nemotron-ultra-253b-v1",
+        "short_name": "Nemotron-Ultra",
+        "weight": 0.14,
         "thinking": True,
-        "thinking_kwargs": {"enable_thinking": True},
-        "reasoning_budget": 4096,
-        "temperature": 0.6,
+        "thinking_kwargs": {"thinking": True},
+        "reasoning_budget": None,
+        "temperature": 0.4,
         "max_tokens": 256,
     },
     {
         "id": "moonshotai/kimi-k2.5",
         "short_name": "Kimi K2.5",
-        "weight": 0.22,
+        "weight": 0.13,
         "thinking": True,
         "thinking_kwargs": {"thinking": True},
         "reasoning_budget": None,
@@ -40,19 +41,9 @@ COUNCIL_MODELS: List[Dict] = [
         "max_tokens": 256,
     },
     {
-        "id": "z-ai/glm5",
-        "short_name": "GLM5",
-        "weight": 0.18,
-        "thinking": True,
-        "thinking_kwargs": {"enable_thinking": True, "clear_thinking": True},
-        "reasoning_budget": None,
-        "temperature": 0.5,
-        "max_tokens": 256,
-    },
-    {
-        "id": "minimaxai/minimax-m2.5",
-        "short_name": "MiniMax M2.5",
-        "weight": 0.20,
+        "id": "deepseek-ai/deepseek-r1",
+        "short_name": "DeepSeek-R1",
+        "weight": 0.12,
         "thinking": False,
         "thinking_kwargs": None,
         "reasoning_budget": None,
@@ -60,9 +51,91 @@ COUNCIL_MODELS: List[Dict] = [
         "max_tokens": 256,
     },
     {
+        "id": "qwen/qwq-32b",
+        "short_name": "QwQ-32B",
+        "weight": 0.11,
+        "thinking": False,
+        "thinking_kwargs": None,
+        "reasoning_budget": None,
+        "temperature": 0.3,
+        "max_tokens": 256,
+    },
+    # Tier 2 — Large models
+    {
+        "id": "nvidia/nemotron-3-super-120b-a12b",
+        "short_name": "Nemotron-120B",
+        "weight": 0.10,
+        "thinking": True,
+        "thinking_kwargs": {"enable_thinking": True},
+        "reasoning_budget": 4096,
+        "temperature": 0.6,
+        "max_tokens": 256,
+    },
+    {
+        "id": "microsoft/phi-4-reasoning-plus",
+        "short_name": "Phi-4-Reasoning",
+        "weight": 0.09,
+        "thinking": False,
+        "thinking_kwargs": None,
+        "reasoning_budget": None,
+        "temperature": 0.3,
+        "max_tokens": 256,
+    },
+    {
+        "id": "meta/llama-4-maverick-17b-128e-instruct",
+        "short_name": "Llama4-Maverick",
+        "weight": 0.09,
+        "thinking": False,
+        "thinking_kwargs": None,
+        "reasoning_budget": None,
+        "temperature": 0.3,
+        "max_tokens": 256,
+    },
+    {
+        "id": "minimaxai/minimax-m2.5",
+        "short_name": "MiniMax M2.5",
+        "weight": 0.08,
+        "thinking": False,
+        "thinking_kwargs": None,
+        "reasoning_budget": None,
+        "temperature": 0.3,
+        "max_tokens": 256,
+    },
+    # Tier 3 — Specialist models
+    {
+        "id": "z-ai/glm5",
+        "short_name": "GLM5",
+        "weight": 0.06,
+        "thinking": True,
+        "thinking_kwargs": {"enable_thinking": True, "clear_thinking": True},
+        "reasoning_budget": None,
+        "temperature": 0.5,
+        "max_tokens": 256,
+    },
+    {
+        "id": "baidu/ernie-4.5-300b-a47b",
+        "short_name": "ERNIE-4.5",
+        "weight": 0.03,
+        "thinking": False,
+        "thinking_kwargs": None,
+        "reasoning_budget": None,
+        "temperature": 0.3,
+        "max_tokens": 128,
+    },
+    {
+        "id": "google/gemma-3-27b-it",
+        "short_name": "Gemma-3-27B",
+        "weight": 0.03,
+        "thinking": False,
+        "thinking_kwargs": None,
+        "reasoning_budget": None,
+        "temperature": 0.3,
+        "max_tokens": 128,
+    },
+    {
         "id": "meta/llama-3.3-70b-instruct",
         "short_name": "Llama 70B",
-        "weight": 0.15,
+        "weight": 0.02,
         "thinking": False,
         "thinking_kwargs": None,
         "reasoning_budget": None,
@@ -225,12 +298,12 @@ def _run_council_sync(symbol: str, signal_scores: Dict[str, float],
 
     # ── Query all models in parallel ──────────────────────────────────────────
     raw_votes: List[Dict] = []
-    with ThreadPoolExecutor(max_workers=5, thread_name_prefix="council") as pool:
+    with ThreadPoolExecutor(max_workers=12, thread_name_prefix="council") as pool:
         future_to_model = {
             pool.submit(_call_model, m, messages, api_key): m
             for m in COUNCIL_MODELS
         }
-        for future in as_completed(future_to_model, timeout=35):
+        for future in as_completed(future_to_model, timeout=45):
             model_cfg = future_to_model[future]
             try:
                 content = future.result(timeout=30)
@@ -301,7 +374,7 @@ def _run_council_sync(symbol: str, signal_scores: Dict[str, float],
         _council_ts[symbol] = time.time()
 
     print(f"[Council] {symbol} → {verdict} composite={composite:+.3f} "
-          f"agreement={agreement:.0f}% ({len(raw_votes)}/5 models)")
+          f"agreement={agreement:.0f}% ({len(raw_votes)}/12 models)")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
