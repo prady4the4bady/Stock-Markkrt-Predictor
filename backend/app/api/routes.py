@@ -1719,6 +1719,21 @@ async def get_prediction(
         # Resolve user's timezone for the timestamp
         user_tz = get_request_tz(request)
 
+        # Kimi AI brief — background-cache pattern (no added latency)
+        ai_brief = None
+        try:
+            from ..models.kimi_analyst import get_cached_brief, start_brief_generation
+            ai_brief = get_cached_brief(symbol)   # None on first call
+            start_brief_generation(symbol, {      # warm cache for next call
+                "current_price":   result["current_price"],
+                "confidence":      result["confidence"],
+                "analysis":        result["analysis"],
+                "oracle_signals":  result["analysis"].get("oracle_signals"),
+                "news_sentiment":  news_sentiment,
+            })
+        except Exception as kimi_err:
+            print(f"[Kimi brief] {kimi_err}")
+
         # Clean NaN/Inf values for JSON serialization
         response = clean_for_json({
             "symbol": symbol,
@@ -1733,15 +1748,16 @@ async def get_prediction(
             "analysis": result["analysis"],
             "feature_importance": feature_importance,
             "news_sentiment": news_sentiment,
+            "ai_brief": ai_brief,          # Kimi K2.5 trading narrative
             "prediction_type": "quick_hourly" if is_short_term else "full_ensemble",
             "timestamp": now_local(user_tz),
             "timezone": str(user_tz),
         })
-        
+
         # Cache the response for fast future requests
         prediction_cache[pred_cache_key] = response
         prediction_cache_timestamps[pred_cache_key] = datetime.now()
-        
+
         return response
         
     except HTTPException:

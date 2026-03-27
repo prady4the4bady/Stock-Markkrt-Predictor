@@ -714,6 +714,37 @@ export default function Dashboard({ selectedAsset, assetType, onAssetSelect }) {
                         oracleSignals={prediction.analysis?.oracle_signals}
                     />
 
+                    {/* Kimi K2.5 AI Brief */}
+                    {prediction.ai_brief && (
+                        <motion.div
+                            initial={{ opacity: 0, y: 12 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: 0.35 }}
+                            className="rounded-2xl p-5"
+                            style={{
+                                background: 'linear-gradient(135deg, rgba(118,185,0,0.06) 0%, rgba(0,0,0,0) 60%)',
+                                border: '1px solid rgba(118,185,0,0.18)',
+                            }}
+                        >
+                            <div className="flex items-center gap-2 mb-3">
+                                <div className="w-6 h-6 rounded-lg flex items-center justify-center"
+                                    style={{ background: 'rgba(118,185,0,0.15)', border: '1px solid rgba(118,185,0,0.3)' }}>
+                                    <Zap size={13} style={{ color: '#76b900' }} />
+                                </div>
+                                <span className="text-xs font-bold uppercase tracking-widest"
+                                    style={{ color: '#76b900' }}>
+                                    Kimi K2.5 · AI Trading Brief
+                                </span>
+                                <span className="ml-auto text-[10px] font-mono text-white/20">
+                                    NVIDIA NIM
+                                </span>
+                            </div>
+                            <p className="text-sm leading-relaxed" style={{ color: 'rgba(255,255,255,0.72)' }}>
+                                {prediction.ai_brief}
+                            </p>
+                        </motion.div>
+                    )}
+
                     {/* Chart Section — NexusTrader or TradingView */}
                     <motion.div
                         initial={{ opacity: 0, y: 20 }}

@@ -50,7 +50,7 @@ router = APIRouter(prefix="/api/polymarket", tags=["Polymarket & Polywhale"])
 # ─── NVIDIA NIM config ────────────────────────────────────────────────────────
 NVIDIA_BASE_URL  = "https://integrate.api.nvidia.com/v1"
 VISION_MODEL     = "meta/llama-3.2-90b-vision-instruct"
-TEXT_MODEL       = "meta/llama-3.1-70b-instruct"
+TEXT_MODEL       = "moonshotai/kimi-k2.5"   # upgraded: chain-of-thought thinking
 
 # ─── In-memory caches ────────────────────────────────────────────────────────
 _markets_cache: Optional[List[Dict]] = None
@@ -92,28 +92,38 @@ def _nvidia_api_key() -> str:
 
 
 def _nvidia_chat(messages: list, model: str, api_key: str,
-                 max_tokens: int = 2048, temperature: float = 0.3) -> str:
+                 max_tokens: int = 2048, temperature: float = 0.3,
+                 thinking: bool = False) -> str:
     """Call NVIDIA NIM's OpenAI-compatible chat endpoint."""
+    payload: dict = {
+        "model":       model,
+        "messages":    messages,
+        "max_tokens":  max_tokens,
+        "temperature": temperature,
+        "top_p":       1.0,
+    }
+    if thinking:
+        payload["chat_template_kwargs"] = {"thinking": True}
+
     resp = requests.post(
         f"{NVIDIA_BASE_URL}/chat/completions",
         headers={
             "Authorization": f"Bearer {api_key}",
             "Content-Type":  "application/json",
         },
-        json={
-            "model":       model,
-            "messages":    messages,
-            "max_tokens":  max_tokens,
-            "temperature": temperature,
-        },
-        timeout=45,
+        json=payload,
+        timeout=60,
     )
     if resp.status_code != 200:
         raise HTTPException(
             status_code=502,
             detail=f"NVIDIA API error {resp.status_code}: {resp.text[:300]}"
         )
-    return resp.json()["choices"][0]["message"]["content"]
+    content = resp.json()["choices"][0]["message"]["content"]
+    # Strip any exposed <think>…</think> blocks
+    import re as _re
+    content = _re.sub(r"<think>[\s\S]*?</think>", "", content, flags=_re.IGNORECASE).strip()
+    return content
 
 
 # ─── Polymarket helpers ───────────────────────────────────────────────────────
@@ -504,8 +514,9 @@ Respond in plain prose, no bullet points, no headers."""
             ],
             model=TEXT_MODEL,
             api_key=api_key,
-            max_tokens=512,
-            temperature=0.4,
+            max_tokens=1024,
+            temperature=0.35,
+            thinking=True,   # Kimi K2.5 — reason before answering
         )
 
         return {

@@ -142,10 +142,10 @@ class MarketOracle:
 
     # Layer weights for confidence calculation (must sum to 1.0)
     _WEIGHTS = {
-        "macro":           0.08,
+        "macro":           0.06,
         "market_breadth":  0.07,
-        "fundamentals":    0.09,
-        "options":         0.08,
+        "fundamentals":    0.07,
+        "options":         0.06,
         "smart_money":     0.07,
         "earnings":        0.06,
         "sector":          0.06,
@@ -154,11 +154,12 @@ class MarketOracle:
         "google_trends":   0.02,   # Google search interest surge
         "seasonal":        0.02,
         "cross_asset":     0.02,
-        "chart_patterns":  0.08,   # Candlestick + chart structure patterns
+        "chart_patterns":  0.06,   # Candlestick + chart structure patterns
         "news_sentiment":  0.05,   # Multi-source news sentiment (Finviz + Yahoo + Bing)
-        "polymarket":      0.10,   # Crowd wisdom — real-money prediction market probabilities
+        "polymarket":      0.08,   # Crowd wisdom — real-money prediction market probabilities
         "bloomberg_rss":   0.04,   # Bloomberg free RSS headline sentiment
         "barebone_ta":     0.06,   # Pure TA composite (RSI/MACD/BB/EMA/OBV — no external calls)
+        "kimi_meta":       0.10,   # NVIDIA Kimi K2.5 reasoning over all other signal layers
     }  # sum = 1.00
 
     def __init__(self):
@@ -222,6 +223,8 @@ class MarketOracle:
             "polymarket":     lambda: self._score_polymarket(clean),
             "bloomberg_rss":  lambda: self._score_bloomberg_rss(clean),
             "barebone_ta":    lambda: self._score_barebone_ta(clean, df),
+            # Kimi meta-reasoning — returns cached score or 0.0 (background warmup)
+            "kimi_meta":      lambda: self._score_kimi_meta(clean),
         }
 
         signals: Dict[str, float] = {}
@@ -233,6 +236,17 @@ class MarketOracle:
             except Exception as e:
                 print(f"[Oracle] {name} failed: {e}")
                 signals[name] = 0.0
+
+        # Feed the completed scores back to Kimi for next-call warmup.
+        # kimi_meta already returned 0.0 or a cached value above; now we give
+        # Kimi the full signal dict so the *next* prediction has a real score.
+        try:
+            from .kimi_analyst import get_kimi_meta_score
+            non_kimi = {k: v for k, v in signals.items() if k != "kimi_meta"}
+            if non_kimi:
+                get_kimi_meta_score(clean, non_kimi)  # warms the cache for next call
+        except Exception:
+            pass
 
         # Directional consensus
         weighted_dir = sum(
@@ -1304,6 +1318,28 @@ class MarketOracle:
 
         _cache.set(f"barebone_{symbol}", score)
         return score
+
+    # ─── Signal Layer 18: NVIDIA Kimi K2.5 Meta-Reasoning ────────────────────
+
+    def _score_kimi_meta(self, symbol: str) -> float:
+        """
+        Use NVIDIA Kimi K2.5 (with chain-of-thought thinking) to reason about
+        all other signal scores and produce a [-1, +1] meta-signal.
+
+        Background-cache pattern: returns a cached score instantly, or 0.0
+        (neutral) on the first call while kicking off a background Kimi request.
+        The score is populated within ~5-8 s and used on all subsequent calls.
+
+        Requires NVIDIA_API_KEY in the environment. Silently returns 0.0 if not set.
+        """
+        try:
+            from .kimi_analyst import get_kimi_meta_score
+            # Get latest cached scores from other layers to feed to Kimi
+            # We pass an empty dict on first call; the meta module maintains its own cache
+            return get_kimi_meta_score(symbol, {})
+        except Exception as e:
+            print(f"[Oracle/kimi_meta] {e}")
+            return 0.0
 
     # ─── Confidence Computation ───────────────────────────────────────────────
 
