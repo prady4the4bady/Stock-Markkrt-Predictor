@@ -126,6 +126,7 @@ from .api.auth_routes import router as auth_router
 from .api.activity_routes import router as activity_router
 from .api.global_routes import router as global_router
 from .api.listings_routes import router as listings_router
+from .api.polymarket_routes import router as polymarket_router
 from .config import API_HOST, API_PORT, CORS_ORIGINS
 from .database import engine, Base, init_database
 from .models import user
@@ -164,6 +165,7 @@ app.include_router(auth_router, prefix="/api/auth", tags=["Authentication"])
 app.include_router(activity_router, prefix="/api/user", tags=["User Activity & Tracking"])
 app.include_router(global_router, tags=["Global Markets"])
 app.include_router(listings_router, tags=["New Listings"])
+app.include_router(polymarket_router, tags=["Polymarket & Polywhale"])
 
 # Serve static frontend files (after build)
 frontend_path = Path(__file__).parent.parent.parent / "frontend" / "dist"

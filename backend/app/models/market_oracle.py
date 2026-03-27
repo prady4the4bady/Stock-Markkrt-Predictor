@@ -142,21 +142,24 @@ class MarketOracle:
 
     # Layer weights for confidence calculation (must sum to 1.0)
     _WEIGHTS = {
-        "macro":          0.13,
-        "market_breadth": 0.11,
-        "fundamentals":   0.11,
-        "options":        0.09,
-        "smart_money":    0.08,
-        "earnings":       0.07,
-        "sector":         0.07,
-        "fear_greed":     0.06,
-        "social":         0.06,   # Reddit WSB + stocktwits social sentiment
-        "google_trends":  0.03,   # Google search interest surge
-        "seasonal":       0.02,
-        "cross_asset":    0.02,
-        "chart_patterns": 0.09,   # Candlestick + chart structure patterns
-        "news_sentiment": 0.06,   # Multi-source news sentiment (Finviz + Yahoo + Bing)
-    }
+        "macro":           0.08,
+        "market_breadth":  0.07,
+        "fundamentals":    0.09,
+        "options":         0.08,
+        "smart_money":     0.07,
+        "earnings":        0.06,
+        "sector":          0.06,
+        "fear_greed":      0.05,
+        "social":          0.05,   # Reddit WSB + stocktwits social sentiment
+        "google_trends":   0.02,   # Google search interest surge
+        "seasonal":        0.02,
+        "cross_asset":     0.02,
+        "chart_patterns":  0.08,   # Candlestick + chart structure patterns
+        "news_sentiment":  0.05,   # Multi-source news sentiment (Finviz + Yahoo + Bing)
+        "polymarket":      0.10,   # Crowd wisdom — real-money prediction market probabilities
+        "bloomberg_rss":   0.04,   # Bloomberg free RSS headline sentiment
+        "barebone_ta":     0.06,   # Pure TA composite (RSI/MACD/BB/EMA/OBV — no external calls)
+    }  # sum = 1.00
 
     def __init__(self):
         self._exec = ThreadPoolExecutor(max_workers=10, thread_name_prefix="oracle")
@@ -213,9 +216,12 @@ class MarketOracle:
             "google_trends":  lambda: self._score_google_trends(clean),
             "seasonal":       lambda: self._score_seasonal(),
             "cross_asset":    lambda: self._score_cross_asset(),
-            # New layers
             "chart_patterns": lambda: self._score_chart_patterns(df),
             "news_sentiment": lambda: self._score_news_sentiment(clean),
+            # New signal layers
+            "polymarket":     lambda: self._score_polymarket(clean),
+            "bloomberg_rss":  lambda: self._score_bloomberg_rss(clean),
+            "barebone_ta":    lambda: self._score_barebone_ta(clean, df),
         }
 
         signals: Dict[str, float] = {}
@@ -1167,6 +1173,137 @@ class MarketOracle:
         except Exception as e:
             print(f"[Oracle/news_sentiment] {e}")
             return 0.0
+
+    # ─── Signal Layer 15: Polymarket Crowd Wisdom ────────────────────────────
+
+    def _score_polymarket(self, symbol: str) -> float:
+        """
+        Aggregate real-money prediction market probabilities from Polymarket.
+        Fed rate cuts, recession odds, inflation targets → bullish/bearish signal.
+        Free public API — no key required.
+        """
+        cached = _cache.get(f"polymarket_{symbol}")
+        if cached is not None:
+            return cached
+
+        try:
+            from ..api.polymarket_routes import _fetch_markets, _compute_polymarket_signal
+            markets = _fetch_markets(100)
+            result  = _compute_polymarket_signal(symbol, markets)
+            score   = float(result.get("composite_signal", 0.0))
+            score   = max(-1.0, min(1.0, score))
+        except Exception as e:
+            print(f"[Oracle/polymarket] {e}")
+            score = 0.0
+
+        _cache.set(f"polymarket_{symbol}", score)
+        return score
+
+    # ─── Signal Layer 16: Bloomberg RSS Sentiment ─────────────────────────────
+
+    def _score_bloomberg_rss(self, symbol: str) -> float:
+        """
+        Parse Bloomberg's free public RSS feed for headline sentiment.
+        Keyword-based scoring on the last 20 headlines relevant to the ticker.
+        """
+        cached = _cache.get(f"bloomberg_{symbol}")
+        if cached is not None:
+            return cached
+
+        BULLISH = {"surge", "rally", "gain", "rise", "record", "beat", "upgrade",
+                   "buy", "growth", "strong", "bullish", "advance", "soar", "profit"}
+        BEARISH = {"plunge", "fall", "drop", "decline", "miss", "cut", "sell",
+                   "downgrade", "bearish", "crash", "recession", "loss", "weak",
+                   "slump", "warning", "concern", "risk"}
+
+        try:
+            import xml.etree.ElementTree as ET
+            resp = requests.get(
+                "https://feeds.bloomberg.com/markets/news.rss",
+                timeout=5,
+                headers={"User-Agent": "Mozilla/5.0 (compatible; NexusTrader/2.0)"},
+            )
+            if resp.status_code != 200:
+                return 0.0
+
+            root  = ET.fromstring(resp.content)
+            items = root.findall(".//item")
+            sym   = symbol.split("/")[0].upper()
+
+            scores = []
+            for item in items[:20]:
+                title_el = item.find("title")
+                desc_el  = item.find("description")
+                if title_el is None:
+                    continue
+                text = (title_el.text or "").lower()
+                if desc_el is not None and desc_el.text:
+                    text += " " + desc_el.text.lower()
+
+                is_relevant = (
+                    sym.lower() in text or
+                    any(kw in text for kw in ("market", "stock", "fed", "rate",
+                                              "economy", "inflation", "nasdaq", "s&p"))
+                )
+                if not is_relevant:
+                    continue
+
+                b = sum(1 for kw in BULLISH if kw in text)
+                r = sum(1 for kw in BEARISH if kw in text)
+                if b + r > 0:
+                    scores.append((b - r) / (b + r))
+
+            result = float(np.mean(scores)) if scores else 0.0
+            result = max(-1.0, min(1.0, result))
+        except Exception as e:
+            print(f"[Oracle/bloomberg_rss] {e}")
+            result = 0.0
+
+        _cache.set(f"bloomberg_{symbol}", result)
+        return result
+
+    # ─── Signal Layer 17: Barebone Pure-TA Composite ──────────────────────────
+
+    def _score_barebone_ta(self, symbol: str,
+                           df: Optional[pd.DataFrame] = None) -> float:
+        """
+        Pure technical analysis — RSI, MACD, Bollinger Bands, EMA cross,
+        Volume surge, Stochastic, Williams %R, OBV trend.
+        No external API calls — always available as a fallback.
+        """
+        cached = _cache.get(f"barebone_{symbol}")
+        if cached is not None:
+            return cached
+
+        try:
+            from .barebone_analyzer import analyze as barebone_analyze
+
+            # Use provided df or fetch fresh data
+            if df is None or df.empty:
+                if not HAS_YF:
+                    return 0.0
+                ticker = yf.Ticker(symbol)
+                hist   = ticker.history(period="3mo", interval="1d")
+                if hist.empty:
+                    return 0.0
+                df_use = hist
+            else:
+                df_use = df
+
+            closes  = df_use["Close"].dropna().values.astype(float)
+            highs   = df_use["High"].dropna().values.astype(float)   if "High"   in df_use else None
+            lows    = df_use["Low"].dropna().values.astype(float)    if "Low"    in df_use else None
+            volumes = df_use["Volume"].dropna().values.astype(float) if "Volume" in df_use else None
+
+            result  = barebone_analyze(closes, highs, lows, volumes)
+            score   = float(result.get("composite", 0.0))
+            score   = max(-1.0, min(1.0, score))
+        except Exception as e:
+            print(f"[Oracle/barebone_ta] {e}")
+            score = 0.0
+
+        _cache.set(f"barebone_{symbol}", score)
+        return score
 
     # ─── Confidence Computation ───────────────────────────────────────────────
 

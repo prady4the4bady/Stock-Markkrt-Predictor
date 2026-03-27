@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { RefreshCw, Clock, Zap, Target, TrendingUp, TrendingDown, AlertCircle, Star, StarOff, Bell, X } from 'lucide-react'
+import { RefreshCw, Clock, Zap, Target, TrendingUp, TrendingDown, AlertCircle, Star, StarOff, Bell, X, BarChart2, Microscope } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import axios from 'axios'
 import api from '../utils/api'
@@ -18,6 +18,8 @@ import SupportResistance from './SupportResistance'
 import MarketSentiment from './MarketSentiment'
 import YahooStylePrice from './YahooStylePrice'
 import AdvancedAnalysis from './AdvancedAnalysis'
+import TradingViewChart from './TradingViewChart'
+import PolywhaleAnalyzer from './PolywhaleAnalyzer'
 import activityService from '../services/ActivityService'
 import { useAuth } from '../context/AuthContext'
 import { useTheme } from '../context/ThemeContext'
@@ -43,6 +45,8 @@ export default function Dashboard({ selectedAsset, assetType, onAssetSelect }) {
     const [showAlertModal, setShowAlertModal] = useState(false)
     const [alertAbove, setAlertAbove] = useState('')
     const [alertBelow, setAlertBelow] = useState('')
+    const [showTVChart, setShowTVChart] = useState(false)
+    const [showPolywhale, setShowPolywhale] = useState(false)
     // Track session for activity tracking
     const sessionRef = useRef(null)
     const previousAssetRef = useRef(null)
@@ -534,6 +538,17 @@ export default function Dashboard({ selectedAsset, assetType, onAssetSelect }) {
                             >
                                 <Bell className="w-5 h-5" />
                             </motion.button>
+                            {/* Polywhale Button */}
+                            <motion.button
+                                whileHover={{ scale: 1.1 }}
+                                whileTap={{ scale: 0.95 }}
+                                onClick={() => setShowPolywhale(true)}
+                                className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white/5 text-gray-400 hover:text-[#c8ff00] hover:bg-[#c8ff00]/10 transition-colors text-xs font-medium"
+                                title="Polywhale — analyze Polymarket screenshot with Claude Vision"
+                            >
+                                <Microscope className="w-4 h-4" />
+                                <span className="hidden sm:inline">Polywhale</span>
+                            </motion.button>
                             {/* Confidence Boost Indicator */}
                             {confidenceBoost && confidenceBoost.boost > 0 && (
                                 <span className="px-2 py-0.5 rounded text-xs font-semibold bg-green-500/20 text-green-400">
@@ -699,41 +714,65 @@ export default function Dashboard({ selectedAsset, assetType, onAssetSelect }) {
                         oracleSignals={prediction.analysis?.oracle_signals}
                     />
 
-                    {/* Main Yahoo Finance Style Chart */}
+                    {/* Chart Section — NexusTrader or TradingView */}
                     <motion.div
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: 0.4 }}
                     >
-                        <YahooChart
-                            historical={historical?.data}
-                            predictions={prediction.predictions}
-                            individual={prediction.individual_predictions}
-                            dates={prediction.dates}
-                            symbol={selectedAsset}
-                            quote={quote}
-                            period={period}
-                            predictionDays={predictionDays}
-                            onPeriodChange={(newPeriod) => {
-                                // Map chart period to data period for historical data fetch
-                                const periodMap = {
-                                    '1d': '1d',
-                                    '5d': '5d',
-                                    '1mo': '1mo',
-                                    '6mo': '6mo',
-                                    'ytd': 'ytd',
-                                    '1y': '1y',
-                                    '5y': '5y',
-                                    'max': 'max'
-                                }
-                                const mappedPeriod = periodMap[newPeriod] || newPeriod
-                                setPeriod(mappedPeriod)
-                            }}
-                            onRefreshData={() => {
-                                // Trigger data refresh for rolling chart updates
-                                fetchPrediction()
-                            }}
-                        />
+                        {/* Chart tab toggle */}
+                        <div className="flex items-center gap-2 mb-3">
+                            <button
+                                onClick={() => setShowTVChart(false)}
+                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                                    !showTVChart
+                                        ? 'bg-[#c8ff00] text-black shadow shadow-[#c8ff00]/20'
+                                        : 'bg-white/5 text-gray-400 hover:text-white'
+                                }`}
+                            >
+                                <Zap className="w-3.5 h-3.5" />
+                                NexusTrader
+                            </button>
+                            <button
+                                onClick={() => setShowTVChart(true)}
+                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                                    showTVChart
+                                        ? 'bg-[#c8ff00] text-black shadow shadow-[#c8ff00]/20'
+                                        : 'bg-white/5 text-gray-400 hover:text-white'
+                                }`}
+                            >
+                                <BarChart2 className="w-3.5 h-3.5" />
+                                TradingView
+                            </button>
+                        </div>
+
+                        {showTVChart ? (
+                            <TradingViewChart
+                                symbol={selectedAsset}
+                                assetType={assetType}
+                                interval={period === '1h' ? '60' : period === '5d' ? 'D' : period === '1mo' ? 'W' : 'D'}
+                                height={520}
+                            />
+                        ) : (
+                            <YahooChart
+                                historical={historical?.data}
+                                predictions={prediction.predictions}
+                                individual={prediction.individual_predictions}
+                                dates={prediction.dates}
+                                symbol={selectedAsset}
+                                quote={quote}
+                                period={period}
+                                predictionDays={predictionDays}
+                                onPeriodChange={(newPeriod) => {
+                                    const periodMap = {
+                                        '1d': '1d', '5d': '5d', '1mo': '1mo', '6mo': '6mo',
+                                        'ytd': 'ytd', '1y': '1y', '5y': '5y', 'max': 'max'
+                                    }
+                                    setPeriod(periodMap[newPeriod] || newPeriod)
+                                }}
+                                onRefreshData={fetchPrediction}
+                            />
+                        )}
                     </motion.div>
 
                     {/* Technical Analysis & Model Weights Row */}
@@ -921,6 +960,15 @@ export default function Dashboard({ selectedAsset, assetType, onAssetSelect }) {
                     </motion.div>
                 )}
             </AnimatePresence>
+
+            {/* Polywhale Analyzer Modal */}
+            {showPolywhale && (
+                <PolywhaleAnalyzer
+                    symbol={selectedAsset}
+                    assetType={assetType}
+                    onClose={() => setShowPolywhale(false)}
+                />
+            )}
 
         </div>
     )
