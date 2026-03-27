@@ -1734,6 +1734,24 @@ async def get_prediction(
         except Exception as kimi_err:
             print(f"[Kimi brief] {kimi_err}")
 
+        # Council warmup — feeds signal scores to Model Council background thread
+        council_verdict = None
+        try:
+            from ..models.council import get_council_score, get_council_verdict
+            oracle_signals = result["analysis"].get("oracle_signals") or {}
+            signal_scores = oracle_signals.get("signals") or {}
+            council_verdict = get_council_verdict(symbol)
+            get_council_score(  # warms cache for next call
+                symbol,
+                signal_scores,
+                result["current_price"],
+                result["confidence"],
+                "UP" if result["analysis"].get("trend", "").lower() in ("up", "bullish") else "DOWN"
+            )
+        except Exception as council_err:
+            council_verdict = None
+            print(f"[Council] {council_err}")
+
         # Clean NaN/Inf values for JSON serialization
         response = clean_for_json({
             "symbol": symbol,
@@ -1749,6 +1767,7 @@ async def get_prediction(
             "feature_importance": feature_importance,
             "news_sentiment": news_sentiment,
             "ai_brief": ai_brief,          # Kimi K2.5 trading narrative
+            "council_verdict": council_verdict,  # Model Council consensus
             "prediction_type": "quick_hourly" if is_short_term else "full_ensemble",
             "timestamp": now_local(user_tz),
             "timezone": str(user_tz),

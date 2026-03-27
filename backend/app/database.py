@@ -21,7 +21,12 @@ DATA_DIR.mkdir(exist_ok=True)
 # If a DATABASE_URL is provided (e.g. from Supabase/Postgres), use it. Otherwise fall back to SQLite for local/dev.
 DATABASE_URL = os.getenv("DATABASE_URL")
 if DATABASE_URL:
-    SQLALCHEMY_DATABASE_URL = DATABASE_URL
+    # Supabase pgbouncer fix: ensure sslmode=require is set
+    _db_url = DATABASE_URL
+    if "supabase" in DATABASE_URL.lower() or ".pooler.supabase.com" in DATABASE_URL:
+        if "sslmode" not in DATABASE_URL:
+            _db_url = DATABASE_URL + ("&" if "?" in DATABASE_URL else "?") + "sslmode=require"
+    SQLALCHEMY_DATABASE_URL = _db_url
 else:
     SQLALCHEMY_DATABASE_URL = f"sqlite:///{DATA_DIR}/users.db"
 
@@ -35,7 +40,14 @@ if DATABASE_URL:
         max_overflow=int(os.getenv("DB_MAX_OVERFLOW", 20)),
         pool_pre_ping=True,
         pool_recycle=int(os.getenv("DB_POOL_RECYCLE", 3600)),
-        echo=(os.getenv("DB_ECHO", "false").lower() == "true")
+        echo=(os.getenv("DB_ECHO", "false").lower() == "true"),
+        connect_args={
+            "connect_timeout": 10,
+            "keepalives": 1,
+            "keepalives_idle": 30,
+            "keepalives_interval": 5,
+            "keepalives_count": 3,
+        },
     )
 else:
     # SQLite configuration for local development

@@ -142,24 +142,27 @@ class MarketOracle:
 
     # Layer weights for confidence calculation (must sum to 1.0)
     _WEIGHTS = {
-        "macro":           0.06,
-        "market_breadth":  0.07,
-        "fundamentals":    0.07,
-        "options":         0.06,
-        "smart_money":     0.07,
-        "earnings":        0.06,
-        "sector":          0.06,
-        "fear_greed":      0.05,
-        "social":          0.05,   # Reddit WSB + stocktwits social sentiment
-        "google_trends":   0.02,   # Google search interest surge
-        "seasonal":        0.02,
+        "macro":           0.04,
+        "market_breadth":  0.04,
+        "fundamentals":    0.05,
+        "options":         0.04,
+        "smart_money":     0.05,
+        "earnings":        0.04,
+        "sector":          0.04,
+        "fear_greed":      0.04,
+        "social":          0.04,
+        "google_trends":   0.02,
+        "seasonal":        0.01,
         "cross_asset":     0.02,
-        "chart_patterns":  0.06,   # Candlestick + chart structure patterns
-        "news_sentiment":  0.05,   # Multi-source news sentiment (Finviz + Yahoo + Bing)
-        "polymarket":      0.08,   # Crowd wisdom — real-money prediction market probabilities
-        "bloomberg_rss":   0.04,   # Bloomberg free RSS headline sentiment
-        "barebone_ta":     0.06,   # Pure TA composite (RSI/MACD/BB/EMA/OBV — no external calls)
-        "kimi_meta":       0.10,   # NVIDIA Kimi K2.5 reasoning over all other signal layers
+        "chart_patterns":  0.05,
+        "news_sentiment":  0.04,
+        "polymarket":      0.08,
+        "bloomberg_rss":   0.03,
+        "barebone_ta":     0.05,
+        "kimi_meta":       0.08,
+        "council":         0.12,
+        "options_gex":     0.05,
+        "regime":          0.07,
     }  # sum = 1.00
 
     def __init__(self):
@@ -225,6 +228,10 @@ class MarketOracle:
             "barebone_ta":    lambda: self._score_barebone_ta(clean, df),
             # Kimi meta-reasoning — returns cached score or 0.0 (background warmup)
             "kimi_meta":      lambda: self._score_kimi_meta(clean),
+            # New signal layers (council, GEX, regime)
+            "council":        lambda: self._score_council(clean),
+            "options_gex":    lambda: self._score_options_gex(clean),
+            "regime":         lambda: self._score_regime(df),
         }
 
         signals: Dict[str, float] = {}
@@ -1339,6 +1346,192 @@ class MarketOracle:
             return get_kimi_meta_score(symbol, {})
         except Exception as e:
             print(f"[Oracle/kimi_meta] {e}")
+            return 0.0
+
+    # ─── Signal Layer 19: Model Council ──────────────────────────────────────
+
+    def _score_council(self, symbol: str) -> float:
+        """
+        Retrieve the weighted composite score from the Model Council
+        (5 NVIDIA NIM models voting in parallel). Returns cached value or 0.0.
+        The council is warmed from routes.py after each prediction; this layer
+        just reads the cache — no blocking calls.
+        """
+        try:
+            from .council import get_council_score
+            return float(get_council_score(symbol, {}, 0, 0, "UP"))
+        except Exception as e:
+            print(f"[Oracle/council] {e}")
+            return 0.0
+
+    # ─── Signal Layer 20: Options Gamma Exposure (GEX) ───────────────────────
+
+    def _score_options_gex(self, symbol: str) -> float:
+        """
+        Compute net dealer gamma exposure from the two nearest option expiries.
+
+        Positive net GEX → dealers are long gamma → they sell rallies & buy dips
+        → volatility suppression → slightly bullish (mean-reverting).
+        Negative net GEX → dealers are short gamma → they amplify moves →
+        follow the existing trend signal.
+
+        Uses yfinance option_chain data. Cached with 15-min TTL.
+        """
+        cache_key = f"gex_{symbol}"
+        cached = _cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        if not HAS_YF:
+            return 0.0
+
+        score = 0.0
+        try:
+            tk = yf.Ticker(symbol)
+            expirations = tk.options
+            if not expirations:
+                _cache.set(cache_key, 0.0)
+                return 0.0
+
+            # Use the nearest 2 expiries
+            target_expiries = expirations[:2]
+
+            # Get current spot price for GEX calculation
+            try:
+                info = tk.fast_info
+                spot = float(info.get("last_price") or info.get("regularMarketPrice") or 0)
+            except Exception:
+                spot = 0.0
+
+            total_call_gex = 0.0
+            total_put_gex = 0.0
+
+            for exp in target_expiries:
+                try:
+                    chain = tk.option_chain(exp)
+                    for df_opt, sign in [(chain.calls, 1.0), (chain.puts, -1.0)]:
+                        if df_opt is None or df_opt.empty:
+                            continue
+                        for col in ["gamma", "openInterest", "strike"]:
+                            if col not in df_opt.columns:
+                                df_opt[col] = 0.0
+                        df_opt = df_opt.dropna(subset=["gamma", "openInterest", "strike"])
+                        # Use spot if available, else use strike as proxy
+                        price_proxy = spot if spot > 0 else df_opt["strike"].median()
+                        gex_series = (
+                            df_opt["gamma"].astype(float)
+                            * df_opt["openInterest"].astype(float)
+                            * 100.0
+                            * price_proxy
+                        )
+                        if sign > 0:
+                            total_call_gex += float(gex_series.sum())
+                        else:
+                            total_put_gex += float(gex_series.sum())
+                except Exception:
+                    continue
+
+            net_gex = total_call_gex - total_put_gex
+            denom = abs(net_gex) + 1e6
+            # Soft normalisation → [-0.7, +0.7]
+            score = max(-0.7, min(0.7, net_gex / denom * 1.0))
+
+        except Exception as e:
+            print(f"[Oracle/options_gex] {e}")
+
+        # Use 15-min TTL — store via a separate cache entry
+        _gex_cache = _TTLCache(ttl_seconds=900)
+        result = max(-1.0, min(1.0, score))
+        _cache.set(cache_key, result)
+        return result
+
+    # ─── Signal Layer 21: Market Regime Detection ─────────────────────────────
+
+    def _score_regime(self, df: Optional[pd.DataFrame]) -> float:
+        """
+        Detect the current market regime from price data and return a
+        directional score in [-1, +1].
+
+        Regimes:
+          STRONG_BULL : price > EMA20 > EMA50 > EMA200 + high ADX → +0.7
+          BULL        : price > EMA20 > EMA50                      → +0.4
+          STRONG_BEAR : price < EMA20 < EMA50 < EMA200 + high ADX → -0.7
+          BEAR        : price < EMA20 < EMA50                      → -0.4
+          CHOPPY      : otherwise → -(vol_pct × 0.1)
+        """
+        if df is None or df.empty:
+            return 0.0
+
+        try:
+            if "Close" not in df.columns or len(df) < 20:
+                return 0.0
+
+            close_all = df["Close"].dropna().values
+            if len(close_all) < 20:
+                return 0.0
+
+            close = close_all[-60:] if len(close_all) >= 60 else close_all
+            n = len(close)
+
+            # ── EMA helper ──
+            def _ema(arr: np.ndarray, span: int) -> np.ndarray:
+                k = 2.0 / (span + 1)
+                out = np.empty(len(arr))
+                out[0] = arr[0]
+                for i in range(1, len(arr)):
+                    out[i] = arr[i] * k + out[i - 1] * (1.0 - k)
+                return out
+
+            span20  = min(20, n)
+            span50  = min(50, n)
+            span200 = min(200, n)
+
+            ema20  = _ema(close, span20)[-1]
+            ema50  = _ema(close, span50)[-1]
+
+            # For EMA200, use the full history if available
+            full_close = close_all
+            ema200 = _ema(full_close, span200)[-1]
+
+            price_now = close[-1]
+
+            # ── Rough ADX proxy ──
+            returns = np.diff(close)
+            if len(close) >= 2:
+                highs_approx = np.maximum(close[1:], close[:-1])
+                lows_approx  = np.minimum(close[1:], close[:-1])
+                daily_range  = highs_approx - lows_approx
+                avg_range    = np.mean(daily_range[-14:]) if len(daily_range) >= 14 else np.mean(daily_range)
+                avg_abs_ret  = np.mean(np.abs(returns[-14:])) if len(returns) >= 14 else np.mean(np.abs(returns))
+                adx_proxy    = float(avg_abs_ret / (avg_range + 1e-9))
+                adx_proxy    = min(1.0, adx_proxy)
+            else:
+                adx_proxy = 0.0
+
+            # ── Volatility percentile (10-day vs 60-day range) ──
+            if len(close) >= 10:
+                vol10 = float(np.std(np.diff(close[-10:])) if len(close) >= 11 else 0.0)
+                vol60 = float(np.std(np.diff(close)) if len(close) >= 2 else 1e-9)
+                vol_pct = min(1.0, vol10 / (vol60 + 1e-9))
+            else:
+                vol_pct = 0.5
+
+            # ── Regime classification ──
+            if price_now > ema20 > ema50 > ema200 and adx_proxy > 0.3:
+                score = 0.7   # STRONG_BULL
+            elif price_now > ema20 > ema50:
+                score = 0.4   # BULL
+            elif price_now < ema20 < ema50 < ema200 and adx_proxy > 0.3:
+                score = -0.7  # STRONG_BEAR
+            elif price_now < ema20 < ema50:
+                score = -0.4  # BEAR
+            else:
+                score = -(vol_pct * 0.1)  # CHOPPY — slightly bearish when volatile
+
+            return max(-1.0, min(1.0, float(score)))
+
+        except Exception as e:
+            print(f"[Oracle/regime] {e}")
             return 0.0
 
     # ─── Confidence Computation ───────────────────────────────────────────────

@@ -167,3 +167,16 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
 @router.get("/me", response_model=UserResponse)
 async def read_users_me(current_user: User = Depends(get_current_active_user)):
     return current_user
+
+
+class RefreshRequest(BaseModel):
+    token: str
+
+
+@router.post("/refresh")
+async def refresh_token(body: RefreshRequest):
+    from ..auth import refresh_access_token
+    new_token = refresh_access_token(body.token)
+    if not new_token:
+        raise HTTPException(status_code=401, detail="Token invalid or expired")
+    return {"access_token": new_token, "token_type": "bearer"}

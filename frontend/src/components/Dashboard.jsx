@@ -20,6 +20,7 @@ import YahooStylePrice from './YahooStylePrice'
 import AdvancedAnalysis from './AdvancedAnalysis'
 import TradingViewChart from './TradingViewChart'
 import PolywhaleAnalyzer from './PolywhaleAnalyzer'
+import CouncilVerdict from './CouncilVerdict'
 import activityService from '../services/ActivityService'
 import { useAuth } from '../context/AuthContext'
 import { useTheme } from '../context/ThemeContext'
@@ -713,6 +714,9 @@ export default function Dashboard({ selectedAsset, assetType, onAssetSelect }) {
                         individual={prediction.individual_predictions}
                         oracleSignals={prediction.analysis?.oracle_signals}
                     />
+
+                    {/* Model Council Verdict */}
+                    <CouncilVerdict verdict={prediction.council_verdict} symbol={selectedAsset} />
 
                     {/* Kimi K2.5 AI Brief */}
                     {prediction.ai_brief && (

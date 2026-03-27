@@ -66,8 +66,29 @@ function createWindow() {
     const isDev = !app.isPackaged;
 
     if (isDev) {
-        // Development: Load from Vite dev server
-        mainWindow.loadURL('http://localhost:5173');
+        // Development: Load from Vite dev server, retrying until it's ready
+        const DEV_URL = 'http://localhost:5173';
+        let retryTimer = null;
+
+        const tryLoad = () => {
+            mainWindow.loadURL(DEV_URL).catch(() => {
+                // loadURL promise rejection — schedule retry
+                retryTimer = setTimeout(tryLoad, 1000);
+            });
+        };
+
+        mainWindow.webContents.on('did-fail-load', (event, errorCode) => {
+            // ERR_CONNECTION_REFUSED (-102) or ERR_ADDRESS_UNREACHABLE (-6)
+            if (errorCode === -102 || errorCode === -6) {
+                retryTimer = setTimeout(tryLoad, 1000);
+            }
+        });
+
+        mainWindow.on('closed', () => {
+            if (retryTimer) clearTimeout(retryTimer);
+        });
+
+        tryLoad();
         mainWindow.webContents.openDevTools();
     } else {
         // Production: Load from backend server serving static files
