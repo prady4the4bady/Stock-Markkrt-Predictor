@@ -2,8 +2,8 @@
  * PolywhaleAnalyzer — Polymarket screenshot analysis panel.
  *
  * Drag-and-drop or click-to-upload a screenshot of any Polymarket page.
- * Sends it to /api/polymarket/analyze-screenshot (Claude vision API).
- * If ANTHROPIC_API_KEY is not configured, shows setup instructions.
+ * Sends it to /api/polymarket/analyze-screenshot (NVIDIA Llama-3.2-90B Vision).
+ * If NVIDIA_API_KEY is not configured, shows setup instructions.
  *
  * Also shows live Polymarket prediction market signals in the sidebar.
  */
@@ -234,7 +234,7 @@ function AnalysisResult({ data, onClear }) {
                     {analysis.raw_analysis}
                 </p>
                 <p className="text-[10px] text-white/25 font-mono">
-                    Model: {data.model} · {data.tokens_used} tokens
+                    Model: {data.model} · {data.provider || 'NVIDIA NIM'}
                 </p>
             </div>
         )
@@ -316,7 +316,7 @@ function AnalysisResult({ data, onClear }) {
             )}
 
             <p className="text-[10px] text-white/20 font-mono text-right">
-                {data.model} · {data.tokens_used} tokens
+                {data.model} · {data.provider || 'NVIDIA NIM'}
             </p>
         </div>
     )
@@ -329,38 +329,39 @@ function SetupNotice({ detail }) {
         <div className="rounded-2xl p-4 space-y-3"
             style={{ background: 'rgba(255,200,0,0.05)', border: '1px solid rgba(255,200,0,0.15)' }}>
             <div className="flex items-center gap-2">
-                <Key size={15} color="#ffc800" />
-                <span className="text-sm font-semibold text-white">Anthropic API Key Required</span>
+                <Key size={15} color="#76b900" />
+                <span className="text-sm font-semibold text-white">NVIDIA API Key Required</span>
             </div>
             <p className="text-xs text-white/50">
-                Polywhale screenshot analysis uses Claude vision. One-time setup:
+                Polywhale uses NVIDIA Llama-3.2-90B Vision (free). One-time setup:
             </p>
             <div className="space-y-1.5">
                 {steps.map((step, i) => (
                     <p key={i} className="text-xs text-white/60 flex items-start gap-2">
-                        <span style={{ color: '#ffc800' }}>›</span>
+                        <span style={{ color: '#76b900' }}>›</span>
                         {i === 0 ? (
                             <span>
                                 Go to{' '}
-                                <a href="https://console.anthropic.com/"
+                                <a href="https://build.nvidia.com/"
                                     target="_blank" rel="noopener noreferrer"
                                     className="underline" style={{ color: '#c8ff00' }}>
-                                    console.anthropic.com
+                                    build.nvidia.com
                                 </a>
+                                {' '}→ Create free account → Get API Key
                             </span>
                         ) : step.replace(/^\d+\.\s*/, '')}
                     </p>
                 ))}
             </div>
             <p className="text-[10px] text-white/30">
-                All other Polymarket signals work without any API key.
+                Free tier. No credit card required. All Polymarket signals work without any key.
             </p>
         </div>
     )
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
-export default function PolywhaleAnalyzer({ symbol, isOpen, onClose }) {
+export default function PolywhaleAnalyzer({ symbol, assetType, onClose }) {
     const [file,      setFile]      = useState(null)
     const [preview,   setPreview]   = useState(null)
     const [loading,   setLoading]   = useState(false)
@@ -412,8 +413,6 @@ export default function PolywhaleAnalyzer({ symbol, isOpen, onClose }) {
         setSetupInfo(null)
     }, [preview])
 
-    if (!isOpen) return null
-
     return (
         <motion.div
             initial={{ opacity: 0, scale: 0.97, y: 8 }}
@@ -443,7 +442,7 @@ export default function PolywhaleAnalyzer({ symbol, isOpen, onClose }) {
                         <div>
                             <h2 className="text-base font-bold text-white">Polywhale Analyzer</h2>
                             <p className="text-[11px] text-white/35">
-                                Prediction market signals · Screenshot analysis
+                                Prediction market signals · NVIDIA Llama Vision
                             </p>
                         </div>
                     </div>
@@ -466,7 +465,7 @@ export default function PolywhaleAnalyzer({ symbol, isOpen, onClose }) {
                         <div className="flex items-center gap-2 mb-1">
                             <Brain size={14} color="#c8ff00" />
                             <span className="text-xs font-semibold text-white/60 uppercase tracking-wide">
-                                Polywhale — Screenshot Analysis
+                                Polywhale — NVIDIA Llama Vision
                             </span>
                         </div>
 
@@ -503,8 +502,8 @@ export default function PolywhaleAnalyzer({ symbol, isOpen, onClose }) {
                                     onMouseLeave={e => !loading && (e.currentTarget.style.background = 'rgba(200,255,0,0.15)')}
                                 >
                                     {loading
-                                        ? <><Loader2 size={15} className="animate-spin" /> Analyzing…</>
-                                        : <><Brain size={15} /> Analyze with Claude Vision</>
+                                        ? <><Loader2 size={15} className="animate-spin" /> Analyzing with NVIDIA…</>
+                                        : <><Brain size={15} /> Analyze with NVIDIA Vision</>
                                     }
                                 </button>
                             </div>
