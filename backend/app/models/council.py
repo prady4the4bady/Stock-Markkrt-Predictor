@@ -248,11 +248,35 @@ def _parse_vote(content: str) -> Optional[Tuple[str, float]]:
         return None
 
 
+# ── Diverse trader personas (MiroFish swarm intelligence concept) ─────────
+# Each council model gets a different persona, leading to genuinely diverse
+# opinions instead of 12 models all answering the same generic prompt.
+_TRADER_PERSONAS: List[str] = [
+    # Tier 1 — heavyweight reasoning models get hardest personas
+    "You are a macro-quant portfolio manager. Focus on macro signals (VIX, yields, DXY, oil), cross-asset correlations, and regime detection.",
+    "You are a momentum day-trader. Focus on short-term price action, RSI, MACD momentum, and volume surges. Ignore long-term fundamentals.",
+    "You are a risk-averse value investor. Focus on fundamentals (P/E, revenue growth, margins), analyst consensus, and downside protection.",
+    "You are a contrarian hedge fund manager. Look for crowded trades, extreme sentiment, mean-reversion setups, and positions that the majority is wrong about.",
+    # Tier 2 — large models
+    "You are a systematic trend-follower. Focus on SMA crossovers, trend strength, breakout patterns, and ignore noise. Only trade confirmed trends.",
+    "You are an options market-maker. Focus on implied volatility, put/call ratios, gamma exposure, and options flow for directional clues.",
+    "You are a global macro strategist. Focus on cross-asset signals, sector rotation, fear & greed index, and geopolitical risk factors.",
+    "You are a quantitative statistician. Focus purely on statistical patterns: z-scores, mean reversion probability, and Bayesian confidence intervals.",
+    # Tier 3 — specialist models
+    "You are a sentiment analyst. Focus on social buzz, Google Trends, news sentiment, and crowd psychology indicators.",
+    "You are a technical chartist. Focus on chart patterns (head & shoulders, wedges, channels), support/resistance levels, and price action.",
+    "You are an earnings specialist. Focus on earnings catalysts, revision trends, whisper numbers, and sector seasonality.",
+    "You are a crypto/altcoin trader. Focus on on-chain metrics, exchange flows, funding rates, and crypto-specific momentum.",
+]
+
+
 def _build_prompt(symbol: str, signal_scores: Dict[str, float],
                   current_price: float, confidence: float,
-                  ml_direction: str) -> List[Dict]:
+                  ml_direction: str,
+                  persona_index: int = 0) -> List[Dict]:
     """
     Build a compact system+user prompt (target <300 tokens).
+    Each model gets a unique trader persona for diverse opinions.
     """
     # Summarise signal scores compactly
     sig_lines = []
@@ -260,8 +284,10 @@ def _build_prompt(symbol: str, signal_scores: Dict[str, float],
         sig_lines.append(f"  {k}: {v:+.2f}")
     sig_summary = "\n".join(sig_lines) if sig_lines else "  (none available)"
 
+    persona = _TRADER_PERSONAS[persona_index % len(_TRADER_PERSONAS)]
+
     system_msg = (
-        "You are a professional quantitative trader giving a concise directional call. "
+        f"{persona} "
         "Respond ONLY in this exact format (no extra text):\n"
         "DIRECTION: UP\n"
         "CONFIDENCE: 75\n"
@@ -286,7 +312,8 @@ def _run_council_sync(symbol: str, signal_scores: Dict[str, float],
                       current_price: float, confidence: float,
                       ml_direction: str) -> None:
     """
-    Query all 5 council models in parallel, aggregate votes, store in cache.
+    Query all 12 council models in parallel with diverse trader personas,
+    aggregate weighted votes, store in cache.
     Called in a daemon thread — never blocks the request path.
     """
     api_key = os.getenv("NVIDIA_API_KEY", "")
@@ -294,15 +321,14 @@ def _run_council_sync(symbol: str, signal_scores: Dict[str, float],
         print("[Council] NVIDIA_API_KEY not set — skipping council run")
         return
 
-    messages = _build_prompt(symbol, signal_scores, current_price, confidence, ml_direction)
-
-    # ── Query all models in parallel ──────────────────────────────────────────
+    # ── Query all models in parallel (each with a unique trader persona) ─────
     raw_votes: List[Dict] = []
     with ThreadPoolExecutor(max_workers=12, thread_name_prefix="council") as pool:
-        future_to_model = {
-            pool.submit(_call_model, m, messages, api_key): m
-            for m in COUNCIL_MODELS
-        }
+        future_to_model = {}
+        for idx, m in enumerate(COUNCIL_MODELS):
+            messages = _build_prompt(symbol, signal_scores, current_price,
+                                     confidence, ml_direction, persona_index=idx)
+            future_to_model[pool.submit(_call_model, m, messages, api_key)] = m
         for future in as_completed(future_to_model, timeout=45):
             model_cfg = future_to_model[future]
             try:
@@ -405,6 +431,47 @@ def get_council_score(symbol: str, signal_scores: Dict[str, float],
         name=f"council-{symbol}",
     )
     t.start()
+    return 0.0
+
+
+def get_council_score_blocking(symbol: str, signal_scores: Dict[str, float],
+                               current_price: float = 0, confidence: float = 0,
+                               ml_direction: str = "UP",
+                               timeout: float = 10.0) -> float:
+    """
+    Like get_council_score but WAITS up to `timeout` seconds for the result
+    instead of returning 0.0 immediately. Used by quick_predict so the first
+    prediction for a symbol includes real council consensus.
+
+    Falls back to 0.0 if NVIDIA_API_KEY is missing or timeout expires.
+    """
+    api_key = os.getenv("NVIDIA_API_KEY", "")
+    if not api_key:
+        return 0.0
+
+    # Check cache first
+    with _council_lock:
+        ts = _council_ts.get(symbol, 0)
+        cached = _council_cache.get(symbol)
+    if cached is not None and (time.time() - ts) < _COUNCIL_TTL:
+        return cached["composite"]
+
+    # Run council in a thread and wait
+    done_event = threading.Event()
+
+    def _run_and_signal():
+        _run_council_sync(symbol, signal_scores, current_price, confidence, ml_direction)
+        done_event.set()
+
+    t = threading.Thread(target=_run_and_signal, daemon=True, name=f"council-block-{symbol}")
+    t.start()
+    done_event.wait(timeout=timeout)
+
+    # Read result from cache
+    with _council_lock:
+        cached = _council_cache.get(symbol)
+    if cached is not None:
+        return cached["composite"]
     return 0.0
 
 

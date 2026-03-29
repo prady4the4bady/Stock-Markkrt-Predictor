@@ -671,9 +671,8 @@ def quick_predict(df: pd.DataFrame, hours: int, is_crypto: bool = False,
         except Exception as _oracle_err:
             print(f"[Oracle] Skipped for quick_predict: {_oracle_err}")
 
-    # ── Combined directional signal: 40% tech + 60% oracle ───────────────────
-    # Oracle gets higher weight because it synthesises 12 independent data sources
-    # while technical indicators re-use the same price series.
+    # ── Combined directional signal: 40% tech + 60% oracle (pre-council) ─────
+    # Council is blended later when available (see below).
     combined_signal = tech_normalized * 0.40 + oracle_weighted * 0.60
     combined_signal = max(-1.0, min(1.0, combined_signal))
 
@@ -681,30 +680,71 @@ def quick_predict(df: pd.DataFrame, hours: int, is_crypto: bool = False,
                           else -1 if combined_signal < -0.08
                           else  0)
 
-    # ── Prediction trajectory uses combined direction ─────────────────────────
+    # ── Council integration (blocking wait up to 8s for AI consensus) ────────
+    council_score = 0.0
+    try:
+        from ..models.council import get_council_score_blocking
+        if symbol:
+            council_score = get_council_score_blocking(
+                symbol, oracle_data.get("signals", {}),
+                current_price, oracle_confidence,
+                "UP" if combined_direction >= 0 else "DOWN",
+                timeout=8,
+            )
+    except Exception:
+        pass
+
+    # Blend: 30% technical + 45% oracle + 25% council
+    if council_score != 0.0:
+        combined_signal = tech_normalized * 0.30 + oracle_weighted * 0.45 + council_score * 0.25
+        combined_signal = max(-1.0, min(1.0, combined_signal))
+        combined_direction = (1 if combined_signal > 0.08
+                              else -1 if combined_signal < -0.08
+                              else 0)
+
+    # ── Model-based price trajectory (NOT random walk) ───────────────────────
+    # Uses linear regression on recent closes + ATR bands + signal-driven drift.
+    # No np.random — all prices are deterministic from real data.
     predictions      = []
     prediction_dates = []
-    base_price       = current_price
 
-    np.random.seed(int(current_price * 100 + datetime.now().minute) % 10000)
+    # Fit linear regression on last 20 candles for trend slope
+    _n_fit = min(20, len(closes))
+    _x = np.arange(_n_fit)
+    _y = closes[-_n_fit:]
+    _slope, _intercept = np.polyfit(_x, _y, 1) if _n_fit >= 3 else (0.0, current_price)
 
-    # Combined hourly drift: reflects both technical and oracle direction
+    # Hourly slope derived from daily regression slope
+    # _slope is price-change-per-candle (daily), so hourly = _slope / market_hours
+    _market_hours = 6.5 if not is_crypto else 24.0
+    hourly_regression_drift = _slope / _market_hours
+
+    # Signal-driven drift adjustment: combined_signal scales the regression drift
     combined_strength = abs(combined_signal)
-    hourly_trend = (combined_direction * combined_strength * 0.8 / 24 / 100) \
-                 + (momentum_5 / 48 / 100)   # momentum gets half weight now
+    signal_drift = combined_direction * combined_strength * atr / (24 * 2)  # ATR-scaled
 
-    # Mean-reversion nudge at extremes
+    # Final hourly drift = regression extrapolation + signal-based adjustment
+    hourly_drift = hourly_regression_drift * 0.4 + signal_drift * 0.6
+
+    # Mean-reversion damping at support/resistance extremes
     if price_position > 0.85:
-        hourly_trend -= 0.0008
+        hourly_drift -= atr * 0.01
     elif price_position < 0.15:
-        hourly_trend += 0.0008
+        hourly_drift += atr * 0.01
+
+    # EMA smoothing: apply drift with exponential decay toward target
+    base_price = current_price
+    ema_alpha = 2.0 / (hours + 1) if hours > 1 else 0.5
 
     for h in range(1, hours + 1):
-        noise            = np.random.normal(0, hourly_volatility * 0.85)  # slight noise reduction
-        momentum_factor  = 0.25 if h > 1 else 0
-        change           = hourly_trend + noise + momentum_factor * hourly_trend
-        change           = max(-0.025, min(0.025, change))   # tighter ±2.5% cap per hour
-        base_price       = base_price * (1 + change)
+        # Target from regression line
+        regression_target = _intercept + _slope * (_n_fit - 1 + h / _market_hours)
+        # Blend current trajectory with regression target (prevents divergence)
+        target = regression_target * 0.3 + (base_price + hourly_drift) * 0.7
+        base_price = base_price + ema_alpha * (target - base_price)
+        # Clamp to ATR-based bounds (no wild swings beyond 2× ATR per day)
+        max_move = atr * 2.0 * (h / _market_hours)
+        base_price = max(current_price - max_move, min(current_price + max_move, base_price))
         predictions.append(float(round(base_price, 2)))
         prediction_dates.append((datetime.now() + timedelta(hours=h)).strftime('%Y-%m-%d %H:%M'))
 
