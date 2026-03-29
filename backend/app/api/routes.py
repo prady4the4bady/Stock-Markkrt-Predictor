@@ -702,6 +702,51 @@ def quick_predict(df: pd.DataFrame, hours: int, is_crypto: bool = False,
                               else -1 if combined_signal < -0.08
                               else 0)
 
+    # ── Self-evolving blend ratios from evolution engine ──────────────────────
+    _evo_blend = {"technical": 0.25, "oracle": 0.35, "council": 0.20, "strategy": 0.20}
+    _detected_regime = "normal"
+    try:
+        from ..agents.evolution_engine import evolution_engine
+        _detected_regime = strategy_data.get("regime", "normal") if strategy_data else "normal"
+        _evo_blend = evolution_engine.get_pipeline_blend(regime=_detected_regime)
+    except Exception:
+        pass
+
+    # ── Advanced prediction strategies (multi-timeframe, volume, regime) ─────
+    strategy_data: Dict[str, Any] = {}
+    try:
+        from ..models.prediction_strategies import run_all_strategies
+        strategy_data = run_all_strategies(
+            symbol=symbol, df=df,
+            oracle_signals=oracle_data.get("signals", {}),
+            prior_confidence=oracle_confidence,
+        )
+        _detected_regime = strategy_data.get("regime", _detected_regime)
+        # Re-fetch blend with actual regime
+        try:
+            _evo_blend = evolution_engine.get_pipeline_blend(regime=_detected_regime)
+        except Exception:
+            pass
+        # Blend strategy composite into the combined signal using evolved weights
+        strat_composite = strategy_data.get("strategy_composite", 0.0)
+        if strat_composite != 0.0:
+            _w_tech = _evo_blend.get("technical", 0.25)
+            _w_orac = _evo_blend.get("oracle", 0.35)
+            _w_coun = _evo_blend.get("council", 0.20)
+            _w_strat = _evo_blend.get("strategy", 0.20)
+            combined_signal = (
+                tech_normalized * _w_tech +
+                oracle_weighted * _w_orac +
+                council_score * _w_coun +
+                strat_composite * _w_strat
+            )
+            combined_signal = max(-1.0, min(1.0, combined_signal))
+            combined_direction = (1 if combined_signal > 0.08
+                                  else -1 if combined_signal < -0.08
+                                  else 0)
+    except Exception as _strat_err:
+        print(f"[Strategies] {_strat_err}")
+
     # ── Model-based price trajectory (NOT random walk) ───────────────────────
     # Uses linear regression on recent closes + ATR bands + signal-driven drift.
     # No np.random — all prices are deterministic from real data.
@@ -766,6 +811,15 @@ def quick_predict(df: pd.DataFrame, hours: int, is_crypto: bool = False,
     else:
         # Full agreement between oracle + technical → confidence valid
         final_confidence = max(75.0, min(97.0, oracle_confidence))
+
+    # ── Strategy-based confidence adjustments ─────────────────────────────────
+    # Apply confluence multiplier and Bayesian update from strategies module
+    if strategy_data:
+        conf_adj = strategy_data.get("confidence_adjustment", 0.0)
+        bayesian_conf = strategy_data.get("bayesian_confidence", final_confidence)
+        # Blend: 60% original confidence + 40% Bayesian-adjusted
+        final_confidence = final_confidence * 0.6 + bayesian_conf * 0.4 + conf_adj
+        final_confidence = max(45.0, min(98.0, final_confidence))
 
     # ── Final recommendation from combined signal ─────────────────────────────
     # Thresholds: need combined_signal ≥ 0.15 to say BUY (prevents false signals)
@@ -909,6 +963,39 @@ def quick_predict(df: pd.DataFrame, hours: int, is_crypto: bool = False,
         except Exception as _rec_err:
             print(f"[Tracker] record skipped: {_rec_err}")
 
+    # ── Evolution engine: record snapshot for self-learning ──────────────────
+    try:
+        from ..agents.evolution_engine import evolution_engine, PredictionSnapshot
+        _council_votes = {}
+        try:
+            from ..models.council import _council_cache, _council_lock
+            with _council_lock:
+                _cc = _council_cache.get(symbol)
+            if _cc and "votes" in _cc:
+                _council_votes = {v["model"]: v["confidence"] * (1 if v["direction"] == "UP" else -1) / 100
+                                  for v in _cc["votes"]}
+        except Exception:
+            pass
+        evolution_engine.record_snapshot(PredictionSnapshot(
+            symbol=symbol,
+            current_price=current_price,
+            direction=final_recommendation,
+            confidence=final_confidence,
+            oracle_signals=oracle_data.get("signals", {}),
+            council_votes=_council_votes,
+            strategy_scores={k: v for k, v in (strategy_data or {}).items()
+                             if isinstance(v, (int, float))},
+            pipeline_components={
+                "technical": tech_normalized,
+                "oracle": oracle_weighted,
+                "council": council_score,
+                "strategy": strategy_data.get("strategy_composite", 0.0) if strategy_data else 0.0,
+            },
+            regime=_detected_regime,
+        ))
+    except Exception as _evo_err:
+        print(f"[Evolution] snapshot skipped: {_evo_err}")
+
     return {
         "current_price": current_price,
         "predictions":   predictions,
@@ -968,6 +1055,7 @@ def quick_predict(df: pd.DataFrame, hours: int, is_crypto: bool = False,
             "trend_strength": round(trend_strength * 33, 1),
             "rsi":            round(rsi, 1),
         },
+        "strategy_analysis": strategy_data if strategy_data else None,
     }
 
 
@@ -3107,3 +3195,37 @@ async def get_realtime_signal(symbol: str):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# EVOLUTION ENGINE — Self-evolving weight optimization
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@router.get("/evolution/status")
+async def evolution_status():
+    """Current state of the self-evolving engine: generation, weights, drift."""
+    try:
+        from ..agents.evolution_engine import evolution_engine
+        return evolution_engine.get_status()
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@router.get("/evolution/drift")
+async def evolution_drift():
+    """How much weights have changed from defaults (measures learning)."""
+    try:
+        from ..agents.evolution_engine import evolution_engine
+        return evolution_engine.get_weight_drift()
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@router.post("/evolution/force")
+async def evolution_force():
+    """Trigger an immediate evolution cycle."""
+    try:
+        from ..agents.evolution_engine import evolution_engine
+        return evolution_engine.force_evolve()
+    except Exception as e:
+        return {"error": str(e)}

@@ -275,31 +275,53 @@ def _build_prompt(symbol: str, signal_scores: Dict[str, float],
                   ml_direction: str,
                   persona_index: int = 0) -> List[Dict]:
     """
-    Build a compact system+user prompt (target <300 tokens).
-    Each model gets a unique trader persona for diverse opinions.
+    Build a structured ReAct-style prompt (MiroFish reasoning pattern).
+    Each model gets a unique trader persona + structured reasoning steps.
     """
     # Summarise signal scores compactly
     sig_lines = []
-    for k, v in list(signal_scores.items())[:12]:  # cap at 12 signals
+    for k, v in list(signal_scores.items())[:14]:
         sig_lines.append(f"  {k}: {v:+.2f}")
     sig_summary = "\n".join(sig_lines) if sig_lines else "  (none available)"
 
+    # Get regime context for smarter reasoning
+    regime_ctx = ""
+    try:
+        from .prediction_strategies import detect_regime
+        # We don't have df here, but we can infer from signal scores
+        regime_ctx = ""
+    except Exception:
+        pass
+
     persona = _TRADER_PERSONAS[persona_index % len(_TRADER_PERSONAS)]
 
+    # ReAct-style structured reasoning prompt (borrowed from MiroFish)
     system_msg = (
-        f"{persona} "
-        "Respond ONLY in this exact format (no extra text):\n"
+        f"{persona}\n\n"
+        "Use this structured reasoning process:\n"
+        "1. OBSERVE: What do the signal scores tell you?\n"
+        "2. THINK: Which signals matter most for YOUR specialty?\n"
+        "3. ASSESS: Do the signals confirm or contradict each other?\n"
+        "4. DECIDE: Give your final call.\n\n"
+        "Respond ONLY in this exact format:\n"
         "DIRECTION: UP\n"
         "CONFIDENCE: 75\n"
         "REASON: one sentence max"
     )
 
+    # Enriched user message with more context
+    bull_count = sum(1 for v in signal_scores.values() if v > 0.1)
+    bear_count = sum(1 for v in signal_scores.values() if v < -0.1)
+    neutral_count = len(signal_scores) - bull_count - bear_count
+
     user_msg = (
         f"Symbol: {symbol}\n"
         f"Price: {current_price:.4g}\n"
-        f"ML model direction: {ml_direction} ({confidence:.0f}% confidence)\n"
+        f"ML ensemble direction: {ml_direction} ({confidence:.0f}% confidence)\n"
+        f"Signal consensus: {bull_count} bullish, {bear_count} bearish, "
+        f"{neutral_count} neutral out of {len(signal_scores)} signals\n"
         f"Signal scores (-1=bearish, +1=bullish):\n{sig_summary}\n\n"
-        "Give your DIRECTION (UP/DOWN/HOLD), CONFIDENCE (0-100), and REASON."
+        "Apply your expertise. Give DIRECTION (UP/DOWN/HOLD), CONFIDENCE (0-100), and REASON."
     )
 
     return [
@@ -348,7 +370,21 @@ def _run_council_sync(symbol: str, signal_scores: Dict[str, float],
     if not raw_votes:
         return
 
-    # ── Aggregate weighted votes ───────────────────────────────────────────────
+    # ── Influence-weighted voting (MiroFish swarm intelligence) ─────────────
+    # Models that have been historically more accurate get higher influence.
+    # Track record is fetched from the feedback loop when available.
+    _influence_mults: Dict[str, float] = {}
+    try:
+        from ..agents.feedback_loop import feedback_loop
+        _accs = feedback_loop.get_accuracy_summary()
+        if isinstance(_accs, dict):
+            _model_accs = _accs.get("model_accuracies", {})
+            for _m, _a in _model_accs.items():
+                # Models with >60% accuracy get boosted, <50% get dampened
+                _influence_mults[_m] = max(0.5, min(2.0, _a / 0.55))
+    except Exception:
+        pass
+
     composite = 0.0
     vote_counts: Dict[str, int] = {"UP": 0, "DOWN": 0, "HOLD": 0}
 
@@ -356,7 +392,10 @@ def _run_council_sync(symbol: str, signal_scores: Dict[str, float],
         d = vote["direction"]
         w = vote["weight"]
         c = vote["confidence"]
-        score = w * c
+        # Apply influence multiplier from track record
+        influence = _influence_mults.get(vote["model"], 1.0)
+        score = w * c * influence
+        vote["influence"] = round(influence, 2)
         if d == "UP":
             composite += score
             vote_counts["UP"] += 1

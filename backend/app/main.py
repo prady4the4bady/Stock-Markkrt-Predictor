@@ -274,6 +274,14 @@ def _start_all_agents():
     except Exception as e:
         print(f"[Agents] Feedback loop failed to start: {e}")
 
+    # ── 2b. Evolution engine (self-evolving weight optimizer) ──────────────
+    try:
+        from .agents.evolution_engine import evolution_engine
+        evolution_engine.start()
+        print("[Agents] Evolution engine started (self-evolving weights)")
+    except Exception as e:
+        print(f"[Agents] Evolution engine failed to start: {e}")
+
     # ── 3. Continuous prediction loop ────────────────────────────────────────
     try:
         from .agents.prediction_loop import prediction_loop
