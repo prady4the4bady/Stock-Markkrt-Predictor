@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
     Settings, Shield, Eye, EyeOff, Download, Trash2,
     Bell, Moon, Sun, Save, Loader2, CheckCircle, AlertTriangle,
-    ChevronRight, Lock
+    ChevronRight, Lock, Key, Plus, X
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import activityService from '../services/ActivityService'
@@ -14,14 +14,70 @@ export default function SettingsPage({ onClose }) {
     const [isLoading, setIsLoading] = useState(true)
     const [isSaving, setIsSaving] = useState(false)
     const [saveStatus, setSaveStatus] = useState(null)
-    const [activeSection, setActiveSection] = useState('privacy')
+    const [activeSection, setActiveSection] = useState('api-keys')
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
     const [isExporting, setIsExporting] = useState(false)
     const [isDeleting, setIsDeleting] = useState(false)
+    const [apiKeys, setApiKeys] = useState({})
+    const [newKeyName, setNewKeyName] = useState('')
+    const [newKeyValue, setNewKeyValue] = useState('')
+    const [keySaving, setKeySaving] = useState(false)
+    const [keyStatus, setKeyStatus] = useState(null)
+    const [showKeyValue, setShowKeyValue] = useState({})
 
     useEffect(() => {
         loadPreferences()
+        loadApiKeys()
     }, [])
+
+    const API_BASE = import.meta.env.VITE_API_URL || ''
+
+    const loadApiKeys = async () => {
+        try {
+            const res = await fetch(`${API_BASE}/api/settings/api-keys`)
+            if (res.ok) {
+                const data = await res.json()
+                setApiKeys(data.keys || {})
+            }
+        } catch (err) {
+            console.error('Failed to load API keys:', err)
+        }
+    }
+
+    const saveApiKey = async () => {
+        if (!newKeyName || !newKeyValue) return
+        setKeySaving(true)
+        setKeyStatus(null)
+        try {
+            const res = await fetch(`${API_BASE}/api/settings/api-keys`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ key_name: newKeyName, key_value: newKeyValue }),
+            })
+            if (!res.ok) {
+                const err = await res.json()
+                throw new Error(err.detail || 'Failed to save')
+            }
+            setKeyStatus('saved')
+            setNewKeyName('')
+            setNewKeyValue('')
+            loadApiKeys()
+            setTimeout(() => setKeyStatus(null), 3000)
+        } catch (err) {
+            setKeyStatus(err.message)
+        } finally {
+            setKeySaving(false)
+        }
+    }
+
+    const deleteApiKey = async (keyName) => {
+        try {
+            await fetch(`${API_BASE}/api/settings/api-keys/${keyName}`, { method: 'DELETE' })
+            loadApiKeys()
+        } catch (err) {
+            console.error('Failed to delete key:', err)
+        }
+    }
 
     const loadPreferences = async () => {
         try {
@@ -96,11 +152,23 @@ export default function SettingsPage({ onClose }) {
     }
 
     const sections = [
+        { id: 'api-keys', label: 'API Keys', icon: Key },
         { id: 'privacy', label: 'Privacy & Tracking', icon: Shield },
         { id: 'notifications', label: 'Notifications', icon: Bell },
         { id: 'display', label: 'Display', icon: Moon },
         { id: 'data', label: 'Your Data', icon: Download },
     ]
+
+    const API_KEY_INFO = {
+        NVIDIA_API_KEY: { label: 'NVIDIA NIM', desc: 'Model Council (12 AI models)', url: 'https://build.nvidia.com/', required: true },
+        GROQ_API_KEY: { label: 'Groq', desc: 'Fast LLM inference', url: 'https://console.groq.com/keys', required: false },
+        ALPHA_VANTAGE_API_KEY: { label: 'Alpha Vantage', desc: 'Stock fundamentals & earnings', url: 'https://www.alphavantage.co/support/#api-key', required: false },
+        FRED_API_KEY: { label: 'FRED', desc: 'Federal Reserve economic data', url: 'https://fred.stlouisfed.org/docs/api/api_key.html', required: false },
+        NEWS_API_KEY: { label: 'NewsAPI', desc: 'Real-time news sentiment', url: 'https://newsapi.org/register', required: false },
+        COINGECKO_API_KEY: { label: 'CoinGecko', desc: 'Crypto market data', url: 'https://www.coingecko.com/en/api', required: false },
+        POLYGON_API_KEY: { label: 'Polygon.io', desc: 'Real-time stock data', url: 'https://polygon.io/dashboard/signup', required: false },
+        OPENAI_API_KEY: { label: 'OpenAI', desc: 'GPT models (optional)', url: 'https://platform.openai.com/api-keys', required: false },
+    }
 
     return (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
@@ -149,6 +217,141 @@ export default function SettingsPage({ onClose }) {
 
                     {/* Content */}
                     <div className="flex-1 p-6 overflow-y-auto">
+                        {/* API Keys Section */}
+                        {activeSection === 'api-keys' && (
+                            <div className="space-y-6">
+                                <div>
+                                    <h3 className="text-lg font-semibold text-white mb-2">API Keys</h3>
+                                    <p className="text-gray-400 text-sm">
+                                        Add your own API keys to unlock additional data sources. Keys are stored securely server-side and never exposed to the browser.
+                                    </p>
+                                </div>
+
+                                {/* Current keys */}
+                                <div className="space-y-3">
+                                    {Object.entries(API_KEY_INFO).map(([keyName, info]) => {
+                                        const keyData = apiKeys[keyName]
+                                        const isSet = keyData?.set
+                                        return (
+                                            <div key={keyName} className={`p-4 rounded-xl border ${
+                                                isSet ? 'bg-green-500/5 border-green-500/20' : 'bg-white/5 border-white/10'
+                                            }`}>
+                                                <div className="flex items-center justify-between">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className={`w-2 h-2 rounded-full ${isSet ? 'bg-green-400' : 'bg-gray-600'}`} />
+                                                        <div>
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="text-white font-medium">{info.label}</span>
+                                                                {info.required && (
+                                                                    <span className="text-[10px] px-1.5 py-0.5 bg-[#c8ff00]/20 text-[#c8ff00] rounded">REQUIRED</span>
+                                                                )}
+                                                            </div>
+                                                            <p className="text-gray-500 text-xs">{info.desc}</p>
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex items-center gap-2">
+                                                        {isSet ? (
+                                                            <>
+                                                                <span className="text-green-400 text-xs font-mono">{keyData.preview}</span>
+                                                                {keyData.source === 'user' && (
+                                                                    <button
+                                                                        onClick={() => deleteApiKey(keyName)}
+                                                                        className="p-1 text-red-400 hover:text-red-300 transition-colors"
+                                                                        title="Remove key"
+                                                                    >
+                                                                        <X className="w-4 h-4" />
+                                                                    </button>
+                                                                )}
+                                                                {keyData.source === 'environment' && (
+                                                                    <span className="text-gray-500 text-[10px]">ENV</span>
+                                                                )}
+                                                            </>
+                                                        ) : (
+                                                            <a
+                                                                href={info.url}
+                                                                target="_blank"
+                                                                rel="noopener noreferrer"
+                                                                className="text-xs text-[#c8ff00] hover:underline"
+                                                            >
+                                                                Get key →
+                                                            </a>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )
+                                    })}
+                                </div>
+
+                                {/* Add new key */}
+                                <div className="p-4 bg-[#c8ff00]/5 rounded-xl border border-[#c8ff00]/20">
+                                    <h4 className="text-[#c8ff00] font-medium mb-3 flex items-center gap-2">
+                                        <Plus className="w-4 h-4" /> Add API Key
+                                    </h4>
+                                    <div className="space-y-3">
+                                        <select
+                                            value={newKeyName}
+                                            onChange={(e) => setNewKeyName(e.target.value)}
+                                            className="w-full bg-[#0d0d18] border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-[#c8ff00]/50"
+                                        >
+                                            <option value="">Select API key type...</option>
+                                            {Object.entries(API_KEY_INFO)
+                                                .filter(([k]) => !apiKeys[k]?.set)
+                                                .map(([k, info]) => (
+                                                    <option key={k} value={k}>{info.label} — {info.desc}</option>
+                                                ))
+                                            }
+                                        </select>
+                                        <div className="relative">
+                                            <input
+                                                type={showKeyValue.new ? 'text' : 'password'}
+                                                value={newKeyValue}
+                                                onChange={(e) => setNewKeyValue(e.target.value)}
+                                                placeholder="Paste your API key here..."
+                                                className="w-full bg-[#0d0d18] border border-white/10 rounded-lg px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-[#c8ff00]/50 pr-20"
+                                            />
+                                            <button
+                                                onClick={() => setShowKeyValue(prev => ({ ...prev, new: !prev.new }))}
+                                                className="absolute right-10 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
+                                            >
+                                                {showKeyValue.new ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                            </button>
+                                        </div>
+                                        <div className="flex items-center justify-between">
+                                            <div>
+                                                {keyStatus === 'saved' && (
+                                                    <span className="text-green-400 text-sm flex items-center gap-1">
+                                                        <CheckCircle className="w-4 h-4" /> Key saved and activated
+                                                    </span>
+                                                )}
+                                                {keyStatus && keyStatus !== 'saved' && (
+                                                    <span className="text-red-400 text-sm flex items-center gap-1">
+                                                        <AlertTriangle className="w-4 h-4" /> {keyStatus}
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <button
+                                                onClick={saveApiKey}
+                                                disabled={!newKeyName || !newKeyValue || keySaving}
+                                                className="flex items-center gap-2 px-4 py-2 bg-[#c8ff00] hover:bg-[#d4ff33] text-black rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed text-sm"
+                                            >
+                                                {keySaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                                                Save Key
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Security note */}
+                                <div className="p-3 bg-blue-500/10 rounded-lg border border-blue-500/20">
+                                    <p className="text-blue-300 text-xs">
+                                        <Lock className="w-3 h-3 inline mr-1" />
+                                        Keys are stored server-side only. They are never sent to your browser after saving, never logged, and never shared with third parties.
+                                    </p>
+                                </div>
+                            </div>
+                        )}
+
                         {/* Privacy Section */}
                         {activeSection === 'privacy' && (
                             <div className="space-y-6">

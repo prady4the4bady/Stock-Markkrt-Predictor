@@ -246,6 +246,21 @@ def _start_all_agents():
     from .config import DEFAULT_STOCKS, DEFAULT_CRYPTO
     from .data_manager import data_manager
 
+    # ── 0. Load user-provided API keys from disk ──────────────────────────────
+    try:
+        from pathlib import Path as _P
+        _keys_dir = _P(__file__).parent.parent / "data" / "user_keys"
+        if _keys_dir.exists():
+            import os as _os
+            for f in _keys_dir.glob("*.txt"):
+                key_name = f.stem
+                val = f.read_text().strip()
+                if val and key_name not in _os.environ:
+                    _os.environ[key_name] = val
+            print(f"[Config] Loaded {len(list(_keys_dir.glob('*.txt')))} user API keys from disk")
+    except Exception as e:
+        print(f"[Config] Failed to load user keys: {e}")
+
     # ── 1. Data prefetch (hourly) ────────────────────────────────────────────
     def prefetch_loop():
         while True:

@@ -3229,3 +3229,105 @@ async def evolution_force():
         return evolution_engine.force_evolve()
     except Exception as e:
         return {"error": str(e)}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# USER API KEYS — Securely store user-provided keys server-side
+# ═══════════════════════════════════════════════════════════════════════════════
+
+import re as _re
+from pathlib import Path as _Path
+
+_API_KEYS_DIR = _Path(__file__).parent.parent.parent / "data" / "user_keys"
+_API_KEYS_DIR.mkdir(parents=True, exist_ok=True)
+
+# Allowed key names — prevents path traversal and injection
+_ALLOWED_KEY_NAMES = {
+    "NVIDIA_API_KEY", "GROQ_API_KEY", "ALPHA_VANTAGE_API_KEY",
+    "FRED_API_KEY", "NEWS_API_KEY", "COINGECKO_API_KEY",
+    "POLYGON_API_KEY", "OPENAI_API_KEY",
+}
+
+# Key format validators (reject obviously bad input)
+_KEY_PATTERN = _re.compile(r'^[A-Za-z0-9_\-\.]{8,200}$')
+
+
+def _sanitize_key_name(name: str) -> str:
+    """Validate key name against allowlist."""
+    name = name.strip().upper()
+    if name not in _ALLOWED_KEY_NAMES:
+        raise ValueError(f"Unknown API key: {name}")
+    return name
+
+
+def _validate_key_value(value: str) -> str:
+    """Basic format validation — reject injection attempts."""
+    value = value.strip()
+    if not value:
+        raise ValueError("Key value cannot be empty")
+    if len(value) > 200:
+        raise ValueError("Key value too long")
+    if not _KEY_PATTERN.match(value):
+        raise ValueError("Key contains invalid characters")
+    return value
+
+
+@router.get("/settings/api-keys")
+async def get_api_keys(request: Request):
+    """Return which API keys are configured (masked, never full values)."""
+    result = {}
+    for key_name in _ALLOWED_KEY_NAMES:
+        # Check env var first, then user file
+        env_val = os.getenv(key_name, "")
+        file_path = _API_KEYS_DIR / f"{key_name}.txt"
+        if env_val:
+            result[key_name] = {"set": True, "source": "environment", "preview": env_val[:4] + "..." + env_val[-4:] if len(env_val) > 8 else "****"}
+        elif file_path.exists():
+            try:
+                val = file_path.read_text().strip()
+                result[key_name] = {"set": True, "source": "user", "preview": val[:4] + "..." + val[-4:] if len(val) > 8 else "****"}
+            except Exception:
+                result[key_name] = {"set": False, "source": None, "preview": None}
+        else:
+            result[key_name] = {"set": False, "source": None, "preview": None}
+    return {"keys": result}
+
+
+@router.post("/settings/api-keys")
+async def save_api_key(request: Request):
+    """Save a user-provided API key securely server-side."""
+    try:
+        body = await request.json()
+        key_name = _sanitize_key_name(body.get("key_name", ""))
+        key_value = _validate_key_value(body.get("key_value", ""))
+
+        # Write to file (server-side only, never in git)
+        file_path = _API_KEYS_DIR / f"{key_name}.txt"
+        file_path.write_text(key_value)
+
+        # Also set in current process env so it takes effect immediately
+        os.environ[key_name] = key_value
+
+        return {"saved": True, "key_name": key_name, "preview": key_value[:4] + "..."}
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/settings/api-keys/{key_name}")
+async def delete_api_key(key_name: str):
+    """Remove a user-provided API key."""
+    try:
+        name = _sanitize_key_name(key_name)
+        file_path = _API_KEYS_DIR / f"{name}.txt"
+        if file_path.exists():
+            file_path.unlink()
+        # Clear from env if it was set by user
+        if name in os.environ:
+            del os.environ[name]
+        return {"deleted": True, "key_name": name}
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
