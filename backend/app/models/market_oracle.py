@@ -1360,7 +1360,8 @@ class MarketOracle:
     def _score_council(self, symbol: str) -> float:
         """
         Retrieve the weighted composite score from the Model Council
-        (5 NVIDIA NIM models voting in parallel). Returns cached value or 0.0.
+        (12 NVIDIA NIM models with diverse trader personas voting in parallel).
+        Returns cached value or 0.0.
         The council is warmed from routes.py after each prediction; this layer
         just reads the cache — no blocking calls.
         """

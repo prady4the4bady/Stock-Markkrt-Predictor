@@ -1699,11 +1699,44 @@ async def get_prediction(
         if df is None or df.empty:
             raise HTTPException(status_code=404, detail=f"No data returned for '{symbol}' — verify the ticker symbol.")
         
-        # For short-term predictions, use lightweight quick prediction
+        # For short-term predictions, try cached ensemble first (real ML),
+        # fall back to quick prediction (regression + ATR + council)
         if is_short_term:
             hours: int = prediction_hours or 1
-            print(f"⚡ Using quick prediction for {hours}h forecast...")
-            result = quick_predict(df, hours, is_crypto, symbol=symbol)
+            # Check if we already have a trained ensemble for this symbol
+            _ensemble_key = None
+            _cached_ensemble = None
+            cache_hour = (datetime.now().hour // 6) * 6
+            for _k in list(model_cache.keys()):
+                if _k.startswith(f"{symbol}_"):
+                    _cached_ensemble = model_cache[_k]
+                    _ensemble_key = _k
+                    break
+            if _cached_ensemble is not None:
+                print(f"⚡ Reusing cached ensemble for {hours}h short-term forecast")
+                # Use ensemble for 1-day prediction, then interpolate to hourly
+                _ens_result = _cached_ensemble.predict(df, 1)
+                _ens_prices = _ens_result.get("predictions", [])
+                if _ens_prices and len(_ens_prices) >= 1:
+                    _target_price = float(_ens_prices[0])
+                    _step = (_target_price - float(df['close'].iloc[-1] if 'close' in df.columns else df['Close'].iloc[-1])) / max(hours, 1)
+                    _current = float(df['close'].iloc[-1] if 'close' in df.columns else df['Close'].iloc[-1])
+                    result = quick_predict(df, hours, is_crypto, symbol=symbol)
+                    # Override predictions with ensemble-derived hourly interpolation
+                    _ml_preds = []
+                    for h in range(1, hours + 1):
+                        _p = _current + _step * h
+                        _ml_preds.append(float(round(_p, 2)))
+                    # Blend: 60% ensemble-derived + 40% signal-based quick_predict
+                    for i in range(min(len(_ml_preds), len(result["predictions"]))):
+                        result["predictions"][i] = round(
+                            _ml_preds[i] * 0.6 + result["predictions"][i] * 0.4, 2)
+                    result["analysis"]["prediction_type"] = "ensemble_hourly"
+                else:
+                    result = quick_predict(df, hours, is_crypto, symbol=symbol)
+            else:
+                print(f"⚡ Using quick prediction for {hours}h forecast...")
+                result = quick_predict(df, hours, is_crypto, symbol=symbol)
         else:
             # Model cache key - keep models for 6 hours to avoid retraining
             cache_hour = (datetime.now().hour // 6) * 6  # Group into 6-hour blocks
